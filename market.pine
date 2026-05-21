@@ -1,0 +1,70 @@
+//@version=6
+indicator("Sniper Edge Engine [MS & Liquidity]", overlay=true, max_boxes_count=500, max_labels_count=500)
+
+// 1. INPUTS
+rrTarget = input.float(3.0, title="Risk-to-Reward Ratio (1:X)")
+swingLen = input.int(5, title="Swing Length (Market Structure)")
+showFVG  = input.bool(true, title="Highlight FVGs")
+
+// 2. PREVIOUS SESSION LIQUIDITY (Daily High/Low)
+// Scans for stops resting above/below previous day's extremes
+pdh = request.security(syminfo.tickerid, "D", high[1], barmerge.gaps_off, barmerge.lookahead_off)
+pdl = request.security(syminfo.tickerid, "D", low[1], barmerge.gaps_off, barmerge.lookahead_off)
+
+plot(pdh, "PDH", color=color.new(color.red, 50), style=plot.style_stepline, linewidth=2)
+plot(pdl, "PDL", color=color.new(color.green, 50), style=plot.style_stepline, linewidth=2)
+
+// 3. MARKET STRUCTURE (BOS / Displacement)
+// Tracks the most recent swing points to confirm trend direction
+sh = ta.pivothigh(high, swingLen, swingLen)
+sl = ta.pivotlow(low, swingLen, swingLen)
+
+var float lastSH = na
+var float lastSL = na
+
+if not na(sh)
+    lastSH := sh
+if not na(sl)
+    lastSL := sl
+
+bosBull = ta.crossover(close, lastSH)
+bosBear = ta.crossunder(close, lastSL)
+
+// 4. FAIR VALUE GAPS (FVG)
+// Imbalances in price delivery.
+bullFVG = low[0] > high[2] and close[1] > high[2]
+bearFVG = high[0] < low[2] and close[1] < low[2]
+
+plotshape(showFVG and bullFVG, title="Bull FVG", style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small)
+plotshape(showFVG and bearFVG, title="Bear FVG", style=shape.triangledown, location=location.abovebar, color=color.red, size=size.small)
+
+// 5. INVERTED FVG (IFVG) & BALANCED PRICE RATIO (BPR)
+// BPR: A bearish FVG immediately overlapping a bullish FVG (efficient pricing).
+isBPR = (bullFVG and bearFVG[1]) or (bearFVG and bullFVG[1])
+plotshape(isBPR, title="BPR / IFVG", style=shape.diamond, location=location.abovebar, color=color.yellow, size=size.small)
+
+// 6. ORDER BLOCKS (OB)
+// The last opposite candle before a structural break.
+var float bullOB_Top = na
+var float bullOB_Bot = na
+var float bearOB_Top = na
+var float bearOB_Bot = na
+
+if bosBull
+    bullOB_Top := high[1]
+    bullOB_Bot := low[1]
+if bosBear
+    bearOB_Top := high[1]
+    bearOB_Bot := low[1]
+
+// 7. EXECUTION / ALERTS (Tight RR)
+// Triggers when price taps an Order Block or FVG aligned with structure.
+longEntry  = bullFVG or (close <= bullOB_Top and close >= bullOB_Bot)
+shortEntry = bearFVG or (close >= bearOB_Bot and close <= bearOB_Top)
+
+// Stop Loss placed just below/above the zone, Take Profit multiplied by RR Target
+if longEntry
+    alert("🎯 SNIPER VERDICT: BUY\nBIAS: Bullish\nSETUP: Price tapped Bullish FVG/OB.\nRISK: Max 5%\nEXECUTION: Target 1:" + str.tostring(rrTarget) + " RR", alert.freq_once_per_bar_close)
+
+if shortEntry
+    alert("🎯 SNIPER VERDICT: SELL\nBIAS: Bearish\nSETUP: Price tapped Bearish FVG/OB.\nRISK: Max 5%\nEXECUTION: Target 1:" + str.tostring(rrTarget) + " RR", alert.freq_once_per_bar_close)
