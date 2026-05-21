@@ -1,49 +1,71 @@
 //@version=6
-indicator("Sniper Edge Engine v20 [Timezone Patched]", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=500)
+indicator("Sniper Edge Engine v24 [Accuracy Fix]", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=500)
 
-// 1. GLOBAL SCOPE FUNCTION (Accepts timezone parameter for correct local display)
+// ============================================================
+// 1. GLOBAL SCOPE FUNCTION
+// ============================================================
 localTimeStr(hourNum, minNum, tz) =>
     timeInUnit = timestamp(year, month, dayofmonth, hourNum, minNum)
     str.format_time(timeInUnit, "HH:mm", tz)
 
+// ============================================================
 // 2. INPUTS & RISK
+// ============================================================
 rrTarget       = input.float(3.0, title="Risk-to-Reward Ratio (1:X)")
-swingLen       = input.int(5, title="LTF Swing Length (For CHoCH)")
-lineLen        = input.int(15, title="Projection Length (Bars)")
-signalCooldown = input.int(15, title="Signal Cooldown (Bars)")
+swingLen       = input.int(3,     title="LTF Swing Length (For CHoCH)")
+lineLen        = input.int(15,    title="Projection Length (Bars)")
+signalCooldown = input.int(15,    title="Signal Cooldown (Bars)")
 minFvgSize     = input.float(1.5, title="Minimum HTF FVG Size (Price Points)")
 useEmaFilter   = input.bool(false, title="Use 200 EMA Trend Filter")
 
-// Theme Customization Input
+// Lookback windows
+chochLookback = input.int(10, title="CHoCH Lookback Window (Bars)")
+fvgLookback   = input.int(5,  title="FVG Tap Lookback Window (Bars)")
+
+// FIX #2 — Opposing FVG proximity block distance
+fvgBlockDist = input.float(3.0, title="Opposing FVG Block Distance (Price Points)", tooltip="Blocks a long entry if a bear FVG top is within this many points above entry, and vice versa for shorts. Prevents entries with a supply/demand wall directly overhead/underfoot.")
+useFvgBlock  = input.bool(false, title="Enable Opposing FVG Block", tooltip="Prevents taking trades directly into an opposing FVG wall.")
+
+// FIX #1 — HTF Confluence filter
+useHtfFilter  = input.bool(false, title="Require HTF Confluence (1H + 4H must agree with trade direction)", tooltip="Strongly recommended. Prevents trading against the dominant higher timeframe trend.")
+
+// FIX #3 — Structure-based SL
+useStructureSL = input.bool(true, title="Use Structure-Based SL (Swing High/Low)", tooltip="Places SL at the last confirmed swing high/low instead of prior candle — gives the trade more breathing room.")
+slBuffer       = input.float(0.5, title="SL Buffer Beyond Structure (Price Points)", tooltip="Extra padding added beyond the swing high/low for the SL.")
+
+// Theme
 useLightModeLabels = input.bool(false, title="Use Light Mode Text Colors (Dark Gray)")
 
-// HUD Timezone Input (IANA format — e.g. "Europe/Istanbul", "America/New_York", "Europe/London")
-hudTimezone = input.string("Europe/Istanbul", title="HUD Clock Display Timezone")
+// HUD Timezone dropdown
+hudTimezone = input.string("Europe/Istanbul", title="HUD Clock Display Timezone", options=["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "America/Sao_Paulo", "Europe/London", "Europe/Paris", "Europe/Berlin", "Europe/Istanbul", "Africa/Cairo", "Asia/Dubai", "Asia/Karachi", "Asia/Kolkata", "Asia/Bangkok", "Asia/Singapore", "Asia/Tokyo", "Asia/Shanghai", "Australia/Sydney", "Pacific/Auckland"])
 
-// Session Killzone Inputs
-londonZone = input.session("0800-1130", title="London Killzone")
-nyZone     = input.session("1330-1600", title="New York Killzone")
+// Killzone Sessions
+londonZone = input.session("0700-1130", title="London Killzone")
+nyZone     = input.session("1300-1600", title="New York Killzone")
 
+// ============================================================
 // 3. FILTERS & THEME-ADAPTIVE LABELING
-inLondon = not na(time(timeframe.period, londonZone))
-inNY     = not na(time(timeframe.period, nyZone))
+// ============================================================
+inLondon   = not na(time(timeframe.period, londonZone))
+inNY       = not na(time(timeframe.period, nyZone))
 inKillzone = inLondon or inNY
 
 textColorStyle = useLightModeLabels ? color.new(#1a1a1a, 20) : color.new(color.white, 0)
 
 bgcolor(inLondon ? color.new(color.blue, 96) : na, title="London Zone Background")
-bgcolor(inNY ? color.new(color.navy, 96) : na, title="New York Zone Background")
+bgcolor(inNY     ? color.new(color.navy, 96) : na, title="New York Zone Background")
 
 if inLondon and not inLondon[1]
     label.new(bar_index, high + 2, text="LONDON KILLZONE\n[Look for FVG Sweep & CHoCH Reversal]", color=color.new(color.white, 100), textcolor=textColorStyle, style=label.style_label_down, size=size.normal)
-
 if inNY and not inNY[1]
     label.new(bar_index, high + 2, text="NEW YORK KILLZONE\n[Look for NY Open Volatility & FVG Tap]", color=color.new(color.white, 100), textcolor=textColorStyle, style=label.style_label_down, size=size.normal)
 
 ema200 = ta.ema(close, 200)
 plot(useEmaFilter ? ema200 : na, "200 EMA", color=color.white, linewidth=2)
 
-// 4. LIVE & PREVIOUS SESSION LIQUIDITY (White Straight Lines)
+// ============================================================
+// 4. LIVE & PREVIOUS SESSION LIQUIDITY
+// ============================================================
 tokyoHours  = "2000-0300"
 londonHours = "0300-0800"
 nyHours     = "0800-1700"
@@ -53,13 +75,13 @@ inLondonTrk = not na(time(timeframe.period, londonHours))
 inNYTrk     = not na(time(timeframe.period, nyHours))
 
 var float activeH = na, var float activeL = na
-var float prevH = na, var float prevL = na
+var float prevH   = na, var float prevL   = na
 var string sessionName = "", var string prevSessionName = ""
 
-var line activeHLine = na, var line activeLLine = na
+var line  activeHLine  = na, var line  activeLLine  = na
 var label activeHLabel = na, var label activeLLabel = na
-var line prevHLine = na, var line prevLLine = na
-var label prevHLabel = na, var label prevLLabel = na
+var line  prevHLine    = na, var line  prevLLine    = na
+var label prevHLabel   = na, var label prevLLabel   = na
 
 isNewSession = (inTokyoTrk and not inTokyoTrk[1]) or (inLondonTrk and not inLondonTrk[1]) or (inNYTrk and not inNYTrk[1])
 
@@ -67,42 +89,36 @@ if isNewSession
     prevH := activeH
     prevL := activeL
     prevSessionName := sessionName
-
     if inTokyoTrk
         sessionName := "Tokyo"
     else if inLondonTrk
         sessionName := "London"
     else if inNYTrk
         sessionName := "New York"
-
     activeH := high
     activeL := low
-
     if not na(prevHLine)
-        line.delete(prevHLine), line.delete(prevLLine)
+        line.delete(prevHLine),   line.delete(prevLLine)
         label.delete(prevHLabel), label.delete(prevLLabel)
     if not na(activeHLine)
-        line.delete(activeHLine), line.delete(activeLLine)
+        line.delete(activeHLine),  line.delete(activeLLine)
         label.delete(activeHLabel), label.delete(activeLLabel)
-
     if not na(prevH)
-        prevHLine := line.new(bar_index, prevH, bar_index + 10, prevH, color=color.white, width=1, style=line.style_dotted)
-        prevLLine := line.new(bar_index, prevL, bar_index + 10, prevL, color=color.white, width=1, style=line.style_dotted)
+        prevHLine  := line.new(bar_index, prevH, bar_index + 10, prevH, color=color.white, width=1, style=line.style_dotted)
+        prevLLine  := line.new(bar_index, prevL, bar_index + 10, prevL, color=color.white, width=1, style=line.style_dotted)
         prevHLabel := label.new(bar_index + 10, prevH, prevSessionName + " High", color=color.new(color.white, 100), textcolor=color.white, style=label.style_label_left, size=size.small)
-        prevLLabel := label.new(bar_index + 10, prevL, prevSessionName + " Low", color=color.new(color.white, 100), textcolor=color.white, style=label.style_label_left, size=size.small)
-
-    activeHLine := line.new(bar_index, activeH, bar_index + 10, activeH, color=color.white, width=2, style=line.style_solid)
-    activeLLine := line.new(bar_index, activeL, bar_index + 10, activeL, color=color.white, width=2, style=line.style_solid)
+        prevLLabel := label.new(bar_index + 10, prevL, prevSessionName + " Low",  color=color.new(color.white, 100), textcolor=color.white, style=label.style_label_left, size=size.small)
+    activeHLine  := line.new(bar_index, activeH, bar_index + 10, activeH, color=color.white, width=2, style=line.style_solid)
+    activeLLine  := line.new(bar_index, activeL, bar_index + 10, activeL, color=color.white, width=2, style=line.style_solid)
     activeHLabel := label.new(bar_index + 10, activeH, sessionName + " High", color=color.new(color.white, 100), textcolor=color.white, style=label.style_label_left, size=size.small)
-    activeLLabel := label.new(bar_index + 10, activeL, sessionName + " Low", color=color.new(color.white, 100), textcolor=color.white, style=label.style_label_left, size=size.small)
-
+    activeLLabel := label.new(bar_index + 10, activeL, sessionName + " Low",  color=color.new(color.white, 100), textcolor=color.white, style=label.style_label_left, size=size.small)
 else if inTokyoTrk or inLondonTrk or inNYTrk
     activeH := math.max(activeH, high)
     activeL := math.min(activeL, low)
     line.set_y1(activeHLine, activeH), line.set_y2(activeHLine, activeH), line.set_x2(activeHLine, bar_index + 10)
     line.set_y1(activeLLine, activeL), line.set_y2(activeLLine, activeL), line.set_x2(activeLLine, bar_index + 10)
-    label.set_xy(activeHLabel, bar_index + 10, activeH), label.set_xy(activeLLabel, bar_index + 10, activeL)
-
+    label.set_xy(activeHLabel, bar_index + 10, activeH)
+    label.set_xy(activeLLabel, bar_index + 10, activeL)
     if not na(prevHLine)
         line.set_x2(prevHLine, bar_index + 10), line.set_x2(prevLLine, bar_index + 10)
         label.set_x(prevHLabel, bar_index + 10), label.set_x(prevLLabel, bar_index + 10)
@@ -114,7 +130,9 @@ else
         line.set_x2(prevHLine, bar_index + 10), line.set_x2(prevLLine, bar_index + 10)
         label.set_x(prevHLabel, bar_index + 10), label.set_x(prevLLabel, bar_index + 10)
 
-// 5. SIZE-FILTERED & ANCHORED HTF FVG MATRIX
+// ============================================================
+// 5. SIZE-FILTERED HTF FVG MATRIX WITH INVALIDATION
+// ============================================================
 f_get_fvg() =>
     bullGap = low[0] - high[2]
     bearGap = low[2] - high[0]
@@ -122,35 +140,48 @@ f_get_fvg() =>
     bear = bearGap >= minFvgSize and close[1] < low[2]
     [bull, bear, low[0], high[2], low[2], high[0]]
 
-[b15, s15, bTop15, bBot15, sTop15, sBot15] = request.security(syminfo.tickerid, "15", f_get_fvg(), barmerge.gaps_off, barmerge.lookahead_off)
-[b60, s60, bTop60, bBot60, sTop60, sBot60] = request.security(syminfo.tickerid, "60", f_get_fvg(), barmerge.gaps_off, barmerge.lookahead_off)
+[b15, s15, bTop15, bBot15, sTop15, sBot15]       = request.security(syminfo.tickerid, "15",  f_get_fvg(), barmerge.gaps_off, barmerge.lookahead_off)
+[b60, s60, bTop60, bBot60, sTop60, sBot60]       = request.security(syminfo.tickerid, "60",  f_get_fvg(), barmerge.gaps_off, barmerge.lookahead_off)
 [b240, s240, bTop240, bBot240, sTop240, sBot240] = request.security(syminfo.tickerid, "240", f_get_fvg(), barmerge.gaps_off, barmerge.lookahead_off)
 
 offset15  = math.max(1, math.round(timeframe.in_seconds("15")  / timeframe.in_seconds(timeframe.period))) * 2
 offset60  = math.max(1, math.round(timeframe.in_seconds("60")  / timeframe.in_seconds(timeframe.period))) * 2
 offset240 = math.max(1, math.round(timeframe.in_seconds("240") / timeframe.in_seconds(timeframe.period))) * 2
 
-var float actBull15Top = na, var float actBull15Bot = na
-var float actBear15Top = na, var float actBear15Bot = na
-var float actBull60Top = na, var float actBull60Bot = na
-var float actBear60Top = na, var float actBear60Bot = na
+var float actBull15Top  = na, var float actBull15Bot  = na
+var float actBear15Top  = na, var float actBear15Bot  = na
+var float actBull60Top  = na, var float actBull60Bot  = na
+var float actBear60Top  = na, var float actBear60Bot  = na
 var float actBull240Top = na, var float actBull240Bot = na
 var float actBear240Top = na, var float actBear240Bot = na
 
+// Invalidate stale FVGs
+if not na(actBull15Bot)  and close < actBull15Bot
+    actBull15Top  := na, actBull15Bot  := na
+if not na(actBear15Top)  and close > actBear15Top
+    actBear15Top  := na, actBear15Bot  := na
+if not na(actBull60Bot)  and close < actBull60Bot
+    actBull60Top  := na, actBull60Bot  := na
+if not na(actBear60Top)  and close > actBear60Top
+    actBear60Top  := na, actBear60Bot  := na
+if not na(actBull240Bot) and close < actBull240Bot
+    actBull240Top := na, actBull240Bot := na
+if not na(actBear240Top) and close > actBear240Top
+    actBear240Top := na, actBear240Bot := na
+
+// Register new FVGs
 if b15 and not b15[1]
     actBull15Top := bTop15, actBull15Bot := bBot15
     box.new(bar_index - offset15, actBull15Top, bar_index + 50, actBull15Bot, border_color=color.new(color.green, 50), bgcolor=color.new(color.green, 90), text="15M FVG", text_color=color.green, text_size=size.small, text_halign=text.align_center)
 if s15 and not s15[1]
     actBear15Top := sTop15, actBear15Bot := sBot15
     box.new(bar_index - offset15, actBear15Top, bar_index + 50, actBear15Bot, border_color=color.new(color.red, 50), bgcolor=color.new(color.red, 90), text="15M FVG", text_color=color.red, text_size=size.small, text_halign=text.align_center)
-
 if b60 and not b60[1]
     actBull60Top := bTop60, actBull60Bot := bBot60
     box.new(bar_index - offset60, actBull60Top, bar_index + 50, actBull60Bot, border_color=color.new(color.green, 30), bgcolor=color.new(color.green, 85), text="1H FVG", text_color=color.green, text_size=size.small, text_halign=text.align_center)
 if s60 and not s60[1]
     actBear60Top := sTop60, actBear60Bot := sBot60
     box.new(bar_index - offset60, actBear60Top, bar_index + 50, actBear60Bot, border_color=color.new(color.red, 30), bgcolor=color.new(color.red, 85), text="1H FVG", text_color=color.red, text_size=size.small, text_halign=text.align_center)
-
 if b240 and not b240[1]
     actBull240Top := bTop240, actBull240Bot := bBot240
     box.new(bar_index - offset240, actBull240Top, bar_index + 50, actBull240Bot, border_color=color.new(color.green, 10), bgcolor=color.new(color.green, 80), text="4H FVG", text_color=color.green, text_size=size.normal, text_halign=text.align_center)
@@ -158,9 +189,11 @@ if s240 and not s240[1]
     actBear240Top := sTop240, actBear240Bot := sBot240
     box.new(bar_index - offset240, actBear240Top, bar_index + 50, actBear240Bot, border_color=color.new(color.red, 10), bgcolor=color.new(color.red, 80), text="4H FVG", text_color=color.red, text_size=size.normal, text_halign=text.align_center)
 
-// 6. LTF MARKET STRUCTURE (CHoCH)
+// ============================================================
+// 6. LTF MARKET STRUCTURE (CHoCH) WITH SESSION RESET
+// ============================================================
 sh = ta.pivothigh(high, swingLen, swingLen)
-sl = ta.pivotlow(low, swingLen, swingLen)
+sl = ta.pivotlow(low,  swingLen, swingLen)
 
 var float lastSH = na, var float lastSL = na
 if not na(sh)
@@ -168,87 +201,153 @@ if not na(sh)
 if not na(sl)
     lastSL := sl
 
-bullCHoCH = ta.crossover(close, lastSH)
+bullCHoCH = ta.crossover(close,  lastSH)
 bearCHoCH = ta.crossunder(close, lastSL)
 
-var int bias = 0
+var int lastBullCHoCHBar = 0
+var int lastBearCHoCHBar = 0
+
 if bullCHoCH
-    bias := 1
+    lastBullCHoCHBar := bar_index
 if bearCHoCH
-    bias := -1
+    lastBearCHoCHBar := bar_index
 
-// 7. LTF ENGULFING DISPLACEMENT
-bullEngulf = close > high[1] and close > open
-bearEngulf = close < low[1] and close < open
+if isNewSession
+    lastBullCHoCHBar := 0
+    lastBearCHoCHBar := 0
 
-// 8. MULTI-TIMEFRAME EXECUTION TRIGGERS & COOLDOWN
-trendBull = not useEmaFilter or (close > ema200)
-trendBear = not useEmaFilter or (close < ema200)
+recentBullCHoCH = (bar_index - lastBullCHoCHBar) <= chochLookback and lastBullCHoCHBar > 0
+recentBearCHoCH = (bar_index - lastBearCHoCHBar) <= chochLookback and lastBearCHoCHBar > 0
 
-inBull15  = (low <= actBull15Top and high >= actBull15Bot)
-inBull60  = (low <= actBull60Top and high >= actBull60Bot)
-inBull240 = (low <= actBull240Top and high >= actBull240Bot)
+// ============================================================
+// 7. FVG TAP LOOKBACK WITH SESSION RESET
+// ============================================================
+inBull15  = not na(actBull15Top)  and (low <= actBull15Top  and high >= actBull15Bot)
+inBull60  = not na(actBull60Top)  and (low <= actBull60Top  and high >= actBull60Bot)
+inBull240 = not na(actBull240Top) and (low <= actBull240Top and high >= actBull240Bot)
 inAnyBullHTF = inBull15 or inBull60 or inBull240
 
-inBear15  = (high >= actBear15Bot and low <= actBear15Top)
-inBear60  = (high >= actBear60Bot and low <= actBear60Top)
-inBear240 = (high >= actBear240Bot and low <= actBear240Top)
+inBear15  = not na(actBear15Top)  and (high >= actBear15Bot  and low <= actBear15Top)
+inBear60  = not na(actBear60Top)  and (high >= actBear60Bot  and low <= actBear60Top)
+inBear240 = not na(actBear240Top) and (high >= actBear240Bot and low <= actBear240Top)
 inAnyBearHTF = inBear15 or inBear60 or inBear240
+
+var int lastBullFvgBar = 0
+var int lastBearFvgBar = 0
+
+if inAnyBullHTF
+    lastBullFvgBar := bar_index
+if inAnyBearHTF
+    lastBearFvgBar := bar_index
+
+if isNewSession
+    lastBullFvgBar := 0
+    lastBearFvgBar := 0
+
+recentBullFvgTap = (bar_index - lastBullFvgBar) <= fvgLookback and lastBullFvgBar > 0
+recentBearFvgTap = (bar_index - lastBearFvgBar) <= fvgLookback and lastBearFvgBar > 0
+
+// ============================================================
+// 8. FIX #1 — HTF CONFLUENCE FILTER & OPTIMIZATION
+//    Grouped security calls to prevent "Too many security calls" error.
+// ============================================================
+f_trend_calc() =>
+    hma_val = ta.hma(close, 21)
+    [close > hma_val, close < hma_val]
+
+[t1_bull, t1_bear]     = request.security(syminfo.tickerid, "1",   f_trend_calc(), barmerge.gaps_off, barmerge.lookahead_off)
+[t3_bull, t3_bear]     = request.security(syminfo.tickerid, "3",   f_trend_calc(), barmerge.gaps_off, barmerge.lookahead_off)
+[t5_bull, t5_bear]     = request.security(syminfo.tickerid, "5",   f_trend_calc(), barmerge.gaps_off, barmerge.lookahead_off)
+[t15_bull, t15_bear]   = request.security(syminfo.tickerid, "15",  f_trend_calc(), barmerge.gaps_off, barmerge.lookahead_off)
+[t60_bull, t60_bear]   = request.security(syminfo.tickerid, "60",  f_trend_calc(), barmerge.gaps_off, barmerge.lookahead_off)
+[t240_bull, t240_bear] = request.security(syminfo.tickerid, "240", f_trend_calc(), barmerge.gaps_off, barmerge.lookahead_off)
+[tD_bull, tD_bear]     = request.security(syminfo.tickerid, "D",   f_trend_calc(), barmerge.gaps_off, barmerge.lookahead_off)
+
+trend1M  = t1_bull  ? "Bullish" : t1_bear  ? "Bearish" : "Neutral"
+trend3M  = t3_bull  ? "Bullish" : t3_bear  ? "Bearish" : "Neutral"
+trend5M  = t5_bull  ? "Bullish" : t5_bear  ? "Bearish" : "Neutral"
+trend15M = t15_bull ? "Bullish" : t15_bear ? "Bearish" : "Neutral"
+trend1H  = t60_bull ? "Bullish" : t60_bear ? "Bearish" : "Neutral"
+trend4H  = t240_bull? "Bullish" : t240_bear? "Bearish" : "Neutral"
+trend1D  = tD_bull  ? "Bullish" : tD_bear  ? "Bearish" : "Neutral"
+
+htfBullOk = not useHtfFilter or (trend1H == "Bullish" and trend4H == "Bullish")
+htfBearOk = not useHtfFilter or (trend1H == "Bearish" and trend4H == "Bearish")
+
+// ============================================================
+// 9. FIX #2 — OPPOSING FVG PROXIMITY BLOCK
+// ============================================================
+nearestBearFvgAbove = math.min(
+     not na(actBear15Bot)  and actBear15Bot  > close ? actBear15Bot  : 1e10,
+     math.min(
+         not na(actBear60Bot)  and actBear60Bot  > close ? actBear60Bot  : 1e10,
+         not na(actBear240Bot) and actBear240Bot > close ? actBear240Bot : 1e10))
+
+nearestBullFvgBelow = math.max(
+     not na(actBull15Top)  and actBull15Top  < close ? actBull15Top  : -1e10,
+     math.max(
+         not na(actBull60Top)  and actBull60Top  < close ? actBull60Top  : -1e10,
+         not na(actBull240Top) and actBull240Top < close ? actBull240Top : -1e10))
+
+bearFvgNotTooClose = not useFvgBlock or (nearestBearFvgAbove - close) > fvgBlockDist or nearestBearFvgAbove == 1e10
+bullFvgNotTooClose = not useFvgBlock or (close - nearestBullFvgBelow) > fvgBlockDist or nearestBullFvgBelow == -1e10
+
+// ============================================================
+// 10. LTF DISPLACEMENT
+// ============================================================
+candleRange = high - low
+bullEngulf  = close > open and (close - open) >= candleRange * 0.5
+bearEngulf  = close < open and (open - close) >= candleRange * 0.5
+
+// ============================================================
+// 11. MULTI-TIMEFRAME EXECUTION TRIGGERS & COOLDOWN
+// ============================================================
+trendBull = not useEmaFilter or (close > ema200)
+trendBear = not useEmaFilter or (close < ema200)
 
 var int lastTradeBar = 0
 cooldownPassed = (bar_index - lastTradeBar) >= signalCooldown
 
-longTrigger  = inKillzone and trendBull and (bias == 1) and bullEngulf and inAnyBullHTF and cooldownPassed
-shortTrigger = inKillzone and trendBear and (bias == -1) and bearEngulf and inAnyBearHTF and cooldownPassed
+longTrigger  = inKillzone and trendBull and htfBullOk and recentBullCHoCH and bullEngulf and recentBullFvgTap and bearFvgNotTooClose and cooldownPassed
+shortTrigger = inKillzone and trendBear and htfBearOk and recentBearCHoCH and bearEngulf and recentBearFvgTap and bullFvgNotTooClose and cooldownPassed
 
 if longTrigger
     lastTradeBar := bar_index
-    entryPrice = close
-    slPrice = math.min(low, low[1])
-    risk = entryPrice - slPrice
-    tpPrice = entryPrice + (risk * rrTarget)
+    entryPrice   = close
+    // FIX #3 — Safety check: if lastSL is na, fall back to candle-based SL to avoid no-trade error
+    slPrice      = (useStructureSL and not na(lastSL)) ? lastSL - slBuffer : math.min(low, low[1])
+    risk         = entryPrice - slPrice
+    tpPrice      = entryPrice + (risk * rrTarget)
 
     line.new(bar_index, entryPrice, bar_index + lineLen, entryPrice, color=color.white, width=2, style=line.style_dashed)
-    line.new(bar_index, slPrice, bar_index + lineLen, slPrice, color=color.red, width=3, style=line.style_solid)
-    line.new(bar_index, tpPrice, bar_index + lineLen, tpPrice, color=color.green, width=3, style=line.style_solid)
-
-    label.new(bar_index + lineLen, tpPrice, text="TP (" + str.tostring(rrTarget) + "R)", color=color.new(color.green, 100), textcolor=color.green, style=label.style_label_left, size=size.small)
-    label.new(bar_index + lineLen, entryPrice, text="Entry", color=color.new(color.white, 100), textcolor=color.white, style=label.style_label_left, size=size.small)
-    label.new(bar_index + lineLen, slPrice, text="SL", color=color.new(color.red, 100), textcolor=color.red, style=label.style_label_left, size=size.small)
+    line.new(bar_index, slPrice,    bar_index + lineLen, slPrice,    color=color.red,   width=3, style=line.style_solid)
+    line.new(bar_index, tpPrice,    bar_index + lineLen, tpPrice,    color=color.green, width=3, style=line.style_solid)
+    label.new(bar_index + lineLen, tpPrice,    text="TP (" + str.tostring(rrTarget) + "R)", color=color.new(color.green, 100), textcolor=color.green, style=label.style_label_left, size=size.small)
+    label.new(bar_index + lineLen, entryPrice, text="Entry",                                color=color.new(color.white, 100), textcolor=color.white, style=label.style_label_left, size=size.small)
+    label.new(bar_index + lineLen, slPrice,    text="SL",                                   color=color.new(color.red,   100), textcolor=color.red,   style=label.style_label_left, size=size.small)
 
 if shortTrigger
     lastTradeBar := bar_index
-    entryPrice = close
-    slPrice = math.max(high, high[1])
-    risk = slPrice - entryPrice
-    tpPrice = entryPrice - (risk * rrTarget)
+    entryPrice   = close
+    // FIX #3 — Safety check: if lastSH is na, fall back to candle-based SL
+    slPrice      = (useStructureSL and not na(lastSH)) ? lastSH + slBuffer : math.max(high, high[1])
+    risk         = slPrice - entryPrice
+    tpPrice      = entryPrice - (risk * rrTarget)
 
     line.new(bar_index, entryPrice, bar_index + lineLen, entryPrice, color=color.white, width=2, style=line.style_dashed)
-    line.new(bar_index, slPrice, bar_index + lineLen, slPrice, color=color.red, width=3, style=line.style_solid)
-    line.new(bar_index, tpPrice, bar_index + lineLen, tpPrice, color=color.green, width=3, style=line.style_solid)
+    line.new(bar_index, slPrice,    bar_index + lineLen, slPrice,    color=color.red,   width=3, style=line.style_solid)
+    line.new(bar_index, tpPrice,    bar_index + lineLen, tpPrice,    color=color.green, width=3, style=line.style_solid)
+    label.new(bar_index + lineLen, tpPrice,    text="TP (" + str.tostring(rrTarget) + "R)", color=color.new(color.green, 100), textcolor=color.green, style=label.style_label_left, size=size.small)
+    label.new(bar_index + lineLen, entryPrice, text="Entry",                                color=color.new(color.white, 100), textcolor=color.white, style=label.style_label_left, size=size.small)
+    label.new(bar_index + lineLen, slPrice,    text="SL",                                   color=color.new(color.red,   100), textcolor=color.red,   style=label.style_label_left, size=size.small)
 
-    label.new(bar_index + lineLen, tpPrice, text="TP (" + str.tostring(rrTarget) + "R)", color=color.new(color.green, 100), textcolor=color.green, style=label.style_label_left, size=size.small)
-    label.new(bar_index + lineLen, entryPrice, text="Entry", color=color.new(color.white, 100), textcolor=color.white, style=label.style_label_left, size=size.small)
-    label.new(bar_index + lineLen, slPrice, text="SL", color=color.new(color.red, 100), textcolor=color.red, style=label.style_label_left, size=size.small)
-
-// 9. COMMAND CENTER HUD
+// ============================================================
+// 12. COMMAND CENTER HUD
+// ============================================================
 var table hud = table.new(position.bottom_right, 2, 9, bgcolor=color.new(#0c0d12, 10), border_width=1, border_color=color.new(color.gray, 70))
 
-f_trend(res) =>
-    hma = ta.hma(close, 21)
-    out = request.security(syminfo.tickerid, res, hma, barmerge.gaps_off, barmerge.lookahead_off)
-    close > out ? "Bullish" : "Bearish"
-
-trend1M  = f_trend("1")
-trend3M  = f_trend("3")
-trend5M  = f_trend("5")
-trend15M = f_trend("15")
-trend1H  = f_trend("60")
-trend4H  = f_trend("240")
-trend1D  = f_trend("D")
-
 f_cell(tbl, col, row, labelText, isHeading, trendStr) =>
-    cellBg = isHeading ? color.new(#1b1e29, 0) : color.new(#0e1017, 30)
+    cellBg   = isHeading ? color.new(#1b1e29, 0) : color.new(#0e1017, 30)
     txtColor = color.white
     if trendStr == "Bullish"
         txtColor := color.green
@@ -259,11 +358,11 @@ f_cell(tbl, col, row, labelText, isHeading, trendStr) =>
 if barstate.islast
     activeClockStr = "OFF-MARKET"
     if inTokyoTrk
-        activeClockStr := "TOKYO (" + localTimeStr(20, 0, hudTimezone) + "-" + localTimeStr(3, 0, hudTimezone) + ")"
+        activeClockStr := "TOKYO ("    + localTimeStr(20, 0, hudTimezone) + "-" + localTimeStr(3,  0, hudTimezone) + ")"
     else if inLondonTrk
-        activeClockStr := "LONDON (" + localTimeStr(3, 0, hudTimezone) + "-" + localTimeStr(8, 0, hudTimezone) + ")"
+        activeClockStr := "LONDON ("   + localTimeStr(3,  0, hudTimezone) + "-" + localTimeStr(8,  0, hudTimezone) + ")"
     else if inNYTrk
-        activeClockStr := "NEW YORK (" + localTimeStr(8, 0, hudTimezone) + "-" + localTimeStr(17, 0, hudTimezone) + ")"
+        activeClockStr := "NEW YORK (" + localTimeStr(8,  0, hudTimezone) + "-" + localTimeStr(17, 0, hudTimezone) + ")"
 
     table.cell(hud, 0, 0, "LIVE:", bgcolor=color.new(color.blue, 20), text_color=color.white, text_size=size.small, text_font_family=font.family_monospace)
     table.cell(hud, 1, 0, activeClockStr, bgcolor=color.new(color.blue, 20), text_color=color.white, text_size=size.small, text_font_family=font.family_monospace)
@@ -271,17 +370,17 @@ if barstate.islast
     f_cell(hud, 0, 1, "TIMEFRAME", true, "")
     f_cell(hud, 1, 1, "BIAS MATRIX", true, "")
 
-    f_cell(hud, 0, 2, "1M", false, "")
-    f_cell(hud, 1, 2, "[" + trend1M + "]", false, trend1M)
-    f_cell(hud, 0, 3, "3M", false, "")
-    f_cell(hud, 1, 3, "[" + trend3M + "]", false, trend3M)
-    f_cell(hud, 0, 4, "5M", false, "")
-    f_cell(hud, 1, 4, "[" + trend5M + "]", false, trend5M)
+    f_cell(hud, 0, 2, "1M",  false, "")
+    f_cell(hud, 1, 2, "[" + trend1M  + "]", false, trend1M)
+    f_cell(hud, 0, 3, "3M",  false, "")
+    f_cell(hud, 1, 3, "[" + trend3M  + "]", false, trend3M)
+    f_cell(hud, 0, 4, "5M",  false, "")
+    f_cell(hud, 1, 4, "[" + trend5M  + "]", false, trend5M)
     f_cell(hud, 0, 5, "15M", false, "")
     f_cell(hud, 1, 5, "[" + trend15M + "]", false, trend15M)
-    f_cell(hud, 0, 6, "1H", false, "")
-    f_cell(hud, 1, 6, "[" + trend1H + "]", false, trend1H)
-    f_cell(hud, 0, 7, "4H", false, "")
-    f_cell(hud, 1, 7, "[" + trend4H + "]", false, trend4H)
-    f_cell(hud, 0, 8, "1D", false, "")
-    f_cell(hud, 1, 8, "[" + trend1D + "]", false, trend1D)
+    f_cell(hud, 0, 6, "1H",  false, "")
+    f_cell(hud, 1, 6, "[" + trend1H  + "]", false, trend1H)
+    f_cell(hud, 0, 7, "4H",  false, "")
+    f_cell(hud, 1, 7, "[" + trend4H  + "]", false, trend4H)
+    f_cell(hud, 0, 8, "1D",  false, "")
+    f_cell(hud, 1, 8, "[" + trend1D  + "]", false, trend1D)
