@@ -1,5 +1,5 @@
 //@version=6
-indicator("Sniper Edge Engine v24 [Accuracy Fix]", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=500)
+indicator("Market Container", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=500)
 
 // ============================================================
 // 1. GLOBAL SCOPE FUNCTION
@@ -27,7 +27,7 @@ fvgBlockDist = input.float(3.0, title="Opposing FVG Block Distance (Price Points
 useFvgBlock  = input.bool(false, title="Enable Opposing FVG Block", tooltip="Prevents taking trades directly into an opposing FVG wall.")
 
 // FIX #1 — HTF Confluence filter
-useHtfFilter  = input.bool(false, title="Require HTF Confluence (1H + 4H must agree with trade direction)", tooltip="Strongly recommended. Prevents trading against the dominant higher timeframe trend.")
+confMode = input.string("Aggressive", title="HTF Confluence Mode", options=["None", "Aggressive", "Moderate", "Conservative"], tooltip="None: No filter. \nAggressive: Fires if ANY HTF (15M, 1H, or 4H) agrees with trade. \nModerate: Requires 15M AND 1H to agree. \nConservative: Requires 1H AND 4H to agree.")
 
 // FIX #3 — Structure-based SL
 useStructureSL = input.bool(true, title="Use Structure-Based SL (Swing High/Low)", tooltip="Places SL at the last confirmed swing high/low instead of prior candle — gives the trade more breathing room.")
@@ -222,14 +222,14 @@ recentBearCHoCH = (bar_index - lastBearCHoCHBar) <= chochLookback and lastBearCH
 // ============================================================
 // 7. FVG TAP LOOKBACK WITH SESSION RESET
 // ============================================================
-inBull15  = not na(actBull15Top)  and (low <= actBull15Top  and high >= actBull15Bot)
-inBull60  = not na(actBull60Top)  and (low <= actBull60Top  and high >= actBull60Bot)
-inBull240 = not na(actBull240Top) and (low <= actBull240Top and high >= actBull240Bot)
+inBull15  = not na(actBull15Top)  and (low <= actBull15Top  and close >= actBull15Bot)
+inBull60  = not na(actBull60Top)  and (low <= actBull60Top  and close >= actBull60Bot)
+inBull240 = not na(actBull240Top) and (low <= actBull240Top and close >= actBull240Bot)
 inAnyBullHTF = inBull15 or inBull60 or inBull240
 
-inBear15  = not na(actBear15Top)  and (high >= actBear15Bot  and low <= actBear15Top)
-inBear60  = not na(actBear60Top)  and (high >= actBear60Bot  and low <= actBear60Top)
-inBear240 = not na(actBear240Top) and (high >= actBear240Bot and low <= actBear240Top)
+inBear15  = not na(actBear15Top)  and (high >= actBear15Bot  and close <= actBear15Top)
+inBear60  = not na(actBear60Top)  and (high >= actBear60Bot  and close <= actBear60Top)
+inBear240 = not na(actBear240Top) and (high >= actBear240Bot and close <= actBear240Top)
 inAnyBearHTF = inBear15 or inBear60 or inBear240
 
 var int lastBullFvgBar = 0
@@ -271,8 +271,19 @@ trend1H  = t60_bull ? "Bullish" : t60_bear ? "Bearish" : "Neutral"
 trend4H  = t240_bull? "Bullish" : t240_bear? "Bearish" : "Neutral"
 trend1D  = tD_bull  ? "Bullish" : tD_bear  ? "Bearish" : "Neutral"
 
-htfBullOk = not useHtfFilter or (trend1H == "Bullish" and trend4H == "Bullish")
-htfBearOk = not useHtfFilter or (trend1H == "Bearish" and trend4H == "Bearish")
+htfBullOk = switch confMode
+    "None"         => true
+    "Aggressive"   => (trend15M == "Bullish" or trend1H == "Bullish" or trend4H == "Bullish")
+    "Moderate"     => (trend15M == "Bullish" and trend1H == "Bullish")
+    "Conservative" => (trend1H == "Bullish" and trend4H == "Bullish")
+    => true
+
+htfBearOk = switch confMode
+    "None"         => true
+    "Aggressive"   => (trend15M == "Bearish" or trend1H == "Bearish" or trend4H == "Bearish")
+    "Moderate"     => (trend15M == "Bearish" and trend1H == "Bearish")
+    "Conservative" => (trend1H == "Bearish" and trend4H == "Bearish")
+    => true
 
 // ============================================================
 // 9. FIX #2 — OPPOSING FVG PROXIMITY BLOCK
@@ -382,5 +393,5 @@ if barstate.islast
     f_cell(hud, 1, 6, "[" + trend1H  + "]", false, trend1H)
     f_cell(hud, 0, 7, "4H",  false, "")
     f_cell(hud, 1, 7, "[" + trend4H  + "]", false, trend4H)
-    f_cell(hud, 0, 8, "1D",  false, "")
     f_cell(hud, 1, 8, "[" + trend1D  + "]", false, trend1D)
+
