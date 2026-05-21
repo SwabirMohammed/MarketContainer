@@ -1,12 +1,15 @@
 //@version=6
-indicator("Sniper Edge Engine v9 [Dual Session Liquidity]", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=500)
+indicator("Sniper Edge Engine v10 [MTF Matrix]", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=500)
 
 // 1. INPUTS & RISK
 rrTarget = input.float(3.0, title="Risk-to-Reward Ratio (1:X)")
-swingLen = input.int(5, title="Swing Length (For CHoCH)")
+swingLen = input.int(5, title="LTF Swing Length (For CHoCH)")
 lineLen  = input.int(15, title="Projection Length (Bars)")
 useEmaFilter = input.bool(true, title="Use 200 EMA Trend Filter")
 killZone = input.session("0800-1130,1330-1600", title="Execution Killzones")
+
+// MULTI-TIMEFRAME INPUT
+htfRes = input.timeframe("15", title="Macro Zone Timeframe (HTF)")
 
 // 2. FILTERS (THE FIREWALL)
 inKillzone = not na(time(timeframe.period, killZone))
@@ -35,7 +38,6 @@ var line activeHLine = na
 var line activeLLine = na
 var label activeHLabel = na
 var label activeLLabel = na
-
 var line prevHLine = na
 var line prevLLine = na
 var label prevHLabel = na
@@ -44,12 +46,10 @@ var label prevLLabel = na
 isNewSession = (inTokyo and not inTokyo[1]) or (inLondon and not inLondon[1]) or (inNY and not inNY[1])
 
 if isNewSession
-    // Lock in the previous session
     prevH := activeH
     prevL := activeL
     prevSessionName := sessionName
 
-    // Set the new active session
     if inTokyo
         sessionName := "Tokyo"
     else if inLondon
@@ -60,7 +60,6 @@ if isNewSession
     activeH := high
     activeL := low
 
-    // Erase old lines to prevent infinite clutter
     if not na(prevHLine)
         line.delete(prevHLine)
         line.delete(prevLLine)
@@ -72,25 +71,20 @@ if isNewSession
         label.delete(activeHLabel)
         label.delete(activeLLabel)
 
-    // Draw PREVIOUS session lines (Dotted White)
     if not na(prevH)
         prevHLine := line.new(bar_index, prevH, bar_index + 10, prevH, color=color.white, width=1, style=line.style_dotted)
         prevLLine := line.new(bar_index, prevL, bar_index + 10, prevL, color=color.white, width=1, style=line.style_dotted)
         prevHLabel := label.new(bar_index + 10, prevH, prevSessionName + " High", color=color.new(color.white, 100), textcolor=color.white, style=label.style_label_left, size=size.small)
         prevLLabel := label.new(bar_index + 10, prevL, prevSessionName + " Low", color=color.new(color.white, 100), textcolor=color.white, style=label.style_label_left, size=size.small)
 
-    // Draw ACTIVE session lines (Solid White)
     activeHLine := line.new(bar_index, activeH, bar_index + 10, activeH, color=color.white, width=2, style=line.style_solid)
     activeLLine := line.new(bar_index, activeL, bar_index + 10, activeL, color=color.white, width=2, style=line.style_solid)
     activeHLabel := label.new(bar_index + 10, activeH, sessionName + " High", color=color.new(color.white, 100), textcolor=color.white, style=label.style_label_left, size=size.small)
     activeLLabel := label.new(bar_index + 10, activeL, sessionName + " Low", color=color.new(color.white, 100), textcolor=color.white, style=label.style_label_left, size=size.small)
 
 else if inTokyo or inLondon or inNY
-    // Expand active session highs/lows live
     activeH := math.max(activeH, high)
     activeL := math.min(activeL, low)
-
-    // Push active lines forward
     line.set_y1(activeHLine, activeH)
     line.set_y2(activeHLine, activeH)
     line.set_x2(activeHLine, bar_index + 10)
@@ -100,15 +94,12 @@ else if inTokyo or inLondon or inNY
     label.set_xy(activeHLabel, bar_index + 10, activeH)
     label.set_xy(activeLLabel, bar_index + 10, activeL)
 
-    // Push previous session lines forward
     if not na(prevHLine)
         line.set_x2(prevHLine, bar_index + 10)
         line.set_x2(prevLLine, bar_index + 10)
         label.set_x(prevHLabel, bar_index + 10)
         label.set_x(prevLLabel, bar_index + 10)
-
 else
-    // If between sessions, just push everything forward horizontally
     if not na(activeHLine)
         line.set_x2(activeHLine, bar_index + 10)
         line.set_x2(activeLLine, bar_index + 10)
@@ -121,7 +112,31 @@ else
         label.set_x(prevLLabel, bar_index + 10)
 
 
-// 4. MARKET STRUCTURE (CHoCH) & ORDER BLOCKS
+// 4. HIGHER TIMEFRAME (HTF) FVG & OB CALCULATIONS
+f_htf_data() =>
+    b_fvg = low[0] > high[2] and close[1] > high[2]
+    s_fvg = high[0] < low[2] and close[1] < low[2]
+    [b_fvg, s_fvg, low[0], high[2], low[2], high[0]]
+
+[htfBull, htfBear, bullTop, bullBot, bearTop, bearBot] = request.security(syminfo.tickerid, htfRes, f_htf_data(), barmerge.gaps_off, barmerge.lookahead_off)
+
+var float activeHtfBullTop = na
+var float activeHtfBullBot = na
+var float activeHtfBearTop = na
+var float activeHtfBearBot = na
+
+// Only draw the box once when the HTF registers a new FVG
+if htfBull and not htfBull[1]
+    activeHtfBullTop := bullTop
+    activeHtfBullBot := bullBot
+    box.new(bar_index, activeHtfBullTop, bar_index + 50, activeHtfBullBot, border_color=color.new(color.green, 50), bgcolor=color.new(color.green, 90))
+
+if htfBear and not htfBear[1]
+    activeHtfBearTop := bearTop
+    activeHtfBearBot := bearBot
+    box.new(bar_index, activeHtfBearTop, bar_index + 50, activeHtfBearBot, border_color=color.new(color.red, 50), bgcolor=color.new(color.red, 90))
+
+// 5. LTF MARKET STRUCTURE (CHoCH) 
 sh = ta.pivothigh(high, swingLen, swingLen)
 sl = ta.pivotlow(low, swingLen, swingLen)
 
@@ -138,38 +153,25 @@ bearCHoCH = ta.crossunder(close, lastSL)
 var int bias = 0 
 if bullCHoCH
     bias := 1 
-    box.new(bar_index[2], high[2], bar_index, low[2], border_color=color.blue, bgcolor=color.new(color.blue, 85))
 if bearCHoCH
     bias := -1 
-    box.new(bar_index[2], high[2], bar_index, low[2], border_color=color.red, bgcolor=color.new(color.red, 85))
 
-// 5. FAIR VALUE GAPS (FVG Boxes)
-bullFVG = low[0] > high[2] and close[1] > high[2]
-bearFVG = high[0] < low[2] and close[1] < low[2]
-
-var float activeBullFVG = na
-var float activeBearFVG = na
-
-if bullFVG
-    activeBullFVG := low[0]
-    box.new(bar_index[2], high[2], bar_index, low[0], border_color=color.new(color.green, 50), bgcolor=color.new(color.green, 90))
-
-if bearFVG
-    activeBearFVG := high[0]
-    box.new(bar_index[2], low[2], bar_index, high[0], border_color=color.new(color.red, 50), bgcolor=color.new(color.red, 90))
-
-// 6. ENGULFING DISPLACEMENT
+// 6. LTF ENGULFING DISPLACEMENT
 bullEngulf = close > high[1] and close > open
 bearEngulf = close < low[1] and close < open
 
-// 7. EXECUTION TRIGGERS
+// 7. MULTI-TIMEFRAME EXECUTION TRIGGERS
 trendBull = not useEmaFilter or (close > ema200)
 trendBear = not useEmaFilter or (close < ema200)
 
-longTrigger  = inKillzone and trendBull and (bias == 1) and bullEngulf and (bullFVG or (low <= activeBullFVG))
-shortTrigger = inKillzone and trendBear and (bias == -1) and bearEngulf and (bearFVG or (high >= activeBearFVG))
+// Trigger MUST happen inside the HTF FVG boundaries
+inHtfBullZone = (low <= activeHtfBullTop and high >= activeHtfBullBot)
+inHtfBearZone = (high >= activeHtfBearBot and low <= activeHtfBearTop)
 
-// 8. DRAWING THICK TRADE LINES
+longTrigger  = inKillzone and trendBull and (bias == 1) and bullEngulf and inHtfBullZone
+shortTrigger = inKillzone and trendBear and (bias == -1) and bearEngulf and inHtfBearZone
+
+// 8. DRAWING THICK TRADE LINES & LABELS
 if longTrigger
     entryPrice = close
     slPrice = math.min(low, low[1]) 
@@ -181,6 +183,7 @@ if longTrigger
     line.new(bar_index, tpPrice, bar_index + lineLen, tpPrice, color=color.green, width=3, style=line.style_solid)
 
     label.new(bar_index + lineLen, tpPrice, text="TP (" + str.tostring(rrTarget) + "R)", color=color.new(color.green, 100), textcolor=color.green, style=label.style_label_left, size=size.small)
+    label.new(bar_index + lineLen, entryPrice, text="Entry", color=color.new(color.blue, 100), textcolor=color.blue, style=label.style_label_left, size=size.small)
     label.new(bar_index + lineLen, slPrice, text="SL", color=color.new(color.red, 100), textcolor=color.red, style=label.style_label_left, size=size.small)
 
 if shortTrigger
@@ -194,11 +197,12 @@ if shortTrigger
     line.new(bar_index, tpPrice, bar_index + lineLen, tpPrice, color=color.green, width=3, style=line.style_solid)
 
     label.new(bar_index + lineLen, tpPrice, text="TP (" + str.tostring(rrTarget) + "R)", color=color.new(color.green, 100), textcolor=color.green, style=label.style_label_left, size=size.small)
+    label.new(bar_index + lineLen, entryPrice, text="Entry", color=color.new(color.blue, 100), textcolor=color.blue, style=label.style_label_left, size=size.small)
     label.new(bar_index + lineLen, slPrice, text="SL", color=color.new(color.red, 100), textcolor=color.red, style=label.style_label_left, size=size.small)
 
 // 9. ALERTS
 if longTrigger
-    alert("🎯 SNIPER VERDICT: BUY\nBIAS: Bullish\nSETUP: Killzone + EMA + FVG + OB + Engulfing.\nEXECUTION: Entry on Close | TP: 1:" + str.tostring(rrTarget) + " RR\nRISK: Max 5%", alert.freq_once_per_bar_close)
+    alert("🎯 SNIPER VERDICT: BUY\nBIAS: Bullish\nSETUP: Killzone + EMA + HTF FVG + LTF Engulfing.\nEXECUTION: Entry on Close | TP: 1:" + str.tostring(rrTarget) + " RR\nRISK: Max 5%", alert.freq_once_per_bar_close)
 
 if shortTrigger
-    alert("🎯 SNIPER VERDICT: SELL\nBIAS: Bearish\nSETUP: Killzone + EMA + FVG + OB + Engulfing.\nEXECUTION: Entry on Close | TP: 1:" + str.tostring(rrTarget) + " RR\nRISK: Max 5%", alert.freq_once_per_bar_close)
+    alert("🎯 SNIPER VERDICT: SELL\nBIAS: Bearish\nSETUP: Killzone + EMA + HTF FVG + LTF Engulfing.\nEXECUTION: Entry on Close | TP: 1:" + str.tostring(rrTarget) + " RR\nRISK: Max 5%", alert.freq_once_per_bar_close)
