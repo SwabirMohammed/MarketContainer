@@ -1,16 +1,24 @@
 //@version=6
-indicator("Sniper Edge Engine v3 [Visual Trade Projections]", overlay=true, max_boxes_count=500, max_labels_count=500, max_lines_count=500)
+indicator("Sniper Edge Engine v4 [Clean Slate & Killzones]", overlay=true, max_lines_count=500, max_labels_count=500)
 
 // 1. INPUTS & RISK
 rrTarget = input.float(3.0, title="Risk-to-Reward Ratio (1:X)")
 swingLen = input.int(5, title="Swing Length (For CHoCH)")
 lineLen  = input.int(15, title="Projection Length (Bars)")
 
-// 2. PREVIOUS SESSION LIQUIDITY (PDH / PDL)
-pdh = request.security(syminfo.tickerid, "D", high[1], barmerge.gaps_off, barmerge.lookahead_off)
-pdl = request.security(syminfo.tickerid, "D", low[1], barmerge.gaps_off, barmerge.lookahead_off)
-plot(pdh, "PDH Liquidity", color=color.new(color.red, 50), style=plot.style_stepline, linewidth=2)
-plot(pdl, "PDL Liquidity", color=color.new(color.green, 50), style=plot.style_stepline, linewidth=2)
+// Filter Inputs
+useEmaFilter = input.bool(true, title="Use 200 EMA Trend Filter")
+// Default is NY and London overlaps. Adjust to your broker's exchange time.
+sessionZone = input.session("0800-1130,1330-1600", title="Killzones (Exchange Time)")
+
+// 2. FILTERS (THE FIREWALL)
+// Time Filter: Fills background slightly blue when active
+inKillzone = not na(time(timeframe.period, sessionZone))
+bgcolor(inKillzone ? color.new(color.blue, 95) : na, title="Killzone Background")
+
+// Trend Filter: 200 EMA
+ema200 = ta.ema(close, 200)
+plot(useEmaFilter ? ema200 : na, "200 EMA", color=color.white, linewidth=2)
 
 // 3. MARKET STRUCTURE (CHoCH)
 sh = ta.pivothigh(high, swingLen, swingLen)
@@ -43,51 +51,72 @@ if bullFVG
 if bearFVG
     activeBearFVG := high[0]
 
-// 5. THE FIREWALL: ENGULFING DISPLACEMENT
+// 5. ENGULFING DISPLACEMENT
 bullEngulf = close > high[1] and close > open
 bearEngulf = close < low[1] and close < open
 
 // 6. EXECUTION TRIGGERS
-longTrigger  = (bias == 1) and bullEngulf and (bullFVG or (low <= activeBullFVG))
-shortTrigger = (bias == -1) and bearEngulf and (bearFVG or (high >= activeBearFVG))
+// Must be in Killzone + Must match EMA trend + Must have CHoCH Bias + Engulfing + FVG Tap
+trendBull = not useEmaFilter or (close > ema200)
+trendBear = not useEmaFilter or (close < ema200)
 
-plotshape(longTrigger, title="Buy Execution", style=shape.labelup, location=location.belowbar, color=color.green, text="BUY", textcolor=color.white, size=size.small)
-plotshape(shortTrigger, title="Sell Execution", style=shape.labeldown, location=location.abovebar, color=color.red, text="SELL", textcolor=color.white, size=size.small)
+longTrigger  = inKillzone and trendBull and (bias == 1) and bullEngulf and (bullFVG or (low <= activeBullFVG))
+shortTrigger = inKillzone and trendBear and (bias == -1) and bearEngulf and (bearFVG or (high >= activeBearFVG))
 
-// 7. DRAWING TRADE LINES (ENTRY, SL, TP)
+// 7. CLEAN SLATE DRAWING (Delete Old Lines automatically)
+var line entryLine = na
+var line slLine = na
+var line tpLine = na
+var label tpLabel = na
+var label slLabel = na
+
 if longTrigger
+    // Erase the old geometry
+    if not na(entryLine)
+        line.delete(entryLine)
+        line.delete(slLine)
+        line.delete(tpLine)
+        label.delete(tpLabel)
+        label.delete(slLabel)
+
     entryPrice = close
-    slPrice = math.min(low, low[1]) // Stop safely below the engulfing pair
+    slPrice = math.min(low, low[1]) 
     risk = entryPrice - slPrice
     tpPrice = entryPrice + (risk * rrTarget)
 
-    // Draw Lines
-    line.new(bar_index, entryPrice, bar_index + lineLen, entryPrice, color=color.blue, width=1, style=line.style_dashed)
-    line.new(bar_index, slPrice, bar_index + lineLen, slPrice, color=color.red, width=2, style=line.style_solid)
-    line.new(bar_index, tpPrice, bar_index + lineLen, tpPrice, color=color.green, width=2, style=line.style_solid)
+    // Draw the new geometry
+    entryLine := line.new(bar_index, entryPrice, bar_index + lineLen, entryPrice, color=color.blue, width=1, style=line.style_dashed)
+    slLine := line.new(bar_index, slPrice, bar_index + lineLen, slPrice, color=color.red, width=2, style=line.style_solid)
+    tpLine := line.new(bar_index, tpPrice, bar_index + lineLen, tpPrice, color=color.green, width=2, style=line.style_solid)
 
-    // Add Targets
-    label.new(bar_index + lineLen, tpPrice, text="TP (" + str.tostring(rrTarget) + "R)", color=color.green, textcolor=color.white, style=label.style_label_left, size=size.small)
-    label.new(bar_index + lineLen, slPrice, text="SL", color=color.red, textcolor=color.white, style=label.style_label_left, size=size.small)
+    tpLabel := label.new(bar_index + lineLen, tpPrice, text="TP (" + str.tostring(rrTarget) + "R)", color=color.green, textcolor=color.white, style=label.style_label_left, size=size.small)
+    slLabel := label.new(bar_index + lineLen, slPrice, text="SL", color=color.red, textcolor=color.white, style=label.style_label_left, size=size.small)
 
 if shortTrigger
+    // Erase the old geometry
+    if not na(entryLine)
+        line.delete(entryLine)
+        line.delete(slLine)
+        line.delete(tpLine)
+        label.delete(tpLabel)
+        label.delete(slLabel)
+
     entryPrice = close
-    slPrice = math.max(high, high[1]) // Stop safely above the engulfing pair
+    slPrice = math.max(high, high[1])
     risk = slPrice - entryPrice
     tpPrice = entryPrice - (risk * rrTarget)
 
-    // Draw Lines
-    line.new(bar_index, entryPrice, bar_index + lineLen, entryPrice, color=color.blue, width=1, style=line.style_dashed)
-    line.new(bar_index, slPrice, bar_index + lineLen, slPrice, color=color.red, width=2, style=line.style_solid)
-    line.new(bar_index, tpPrice, bar_index + lineLen, tpPrice, color=color.green, width=2, style=line.style_solid)
+    // Draw the new geometry
+    entryLine := line.new(bar_index, entryPrice, bar_index + lineLen, entryPrice, color=color.blue, width=1, style=line.style_dashed)
+    slLine := line.new(bar_index, slPrice, bar_index + lineLen, slPrice, color=color.red, width=2, style=line.style_solid)
+    tpLine := line.new(bar_index, tpPrice, bar_index + lineLen, tpPrice, color=color.green, width=2, style=line.style_solid)
 
-    // Add Targets
-    label.new(bar_index + lineLen, tpPrice, text="TP (" + str.tostring(rrTarget) + "R)", color=color.green, textcolor=color.white, style=label.style_label_left, size=size.small)
-    label.new(bar_index + lineLen, slPrice, text="SL", color=color.red, textcolor=color.white, style=label.style_label_left, size=size.small)
+    tpLabel := label.new(bar_index + lineLen, tpPrice, text="TP (" + str.tostring(rrTarget) + "R)", color=color.green, textcolor=color.white, style=label.style_label_left, size=size.small)
+    slLabel := label.new(bar_index + lineLen, slPrice, text="SL", color=color.red, textcolor=color.white, style=label.style_label_left, size=size.small)
 
 // 8. ALERTS
 if longTrigger
-    alert("🎯 SNIPER VERDICT: BUY\nBIAS: Bullish\nSETUP: Bull CHoCH + FVG Tap + Engulfing.\nEXECUTION: Entry on Close | SL: " + str.tostring(math.min(low, low[1])) + " | TP: 1:" + str.tostring(rrTarget) + " RR\nRISK: Max 5%", alert.freq_once_per_bar_close)
+    alert("🎯 SNIPER VERDICT: BUY\nBIAS: Bullish\nSETUP: Killzone + EMA + FVG + Engulfing.\nEXECUTION: Entry on Close | TP: 1:" + str.tostring(rrTarget) + " RR\nRISK: Max 5%", alert.freq_once_per_bar_close)
 
 if shortTrigger
-    alert("🎯 SNIPER VERDICT: SELL\nBIAS: Bearish\nSETUP: Bear CHoCH + FVG Tap + Engulfing.\nEXECUTION: Entry on Close | SL: " + str.tostring(math.max(high, high[1])) + " | TP: 1:" + str.tostring(rrTarget) + " RR\nRISK: Max 5%", alert.freq_once_per_bar_close)
+    alert("🎯 SNIPER VERDICT: SELL\nBIAS: Bearish\nSETUP: Killzone + EMA + FVG + Engulfing.\nEXECUTION: Entry on Close | TP: 1:" + str.tostring(rrTarget) + " RR\nRISK: Max 5%", alert.freq_once_per_bar_close)
