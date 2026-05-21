@@ -1,15 +1,13 @@
 //@version=6
-indicator("Sniper Edge Engine v10 [MTF Matrix]", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=500)
+indicator("Sniper Edge Engine v12 [Size-Filtered Matrix]", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=500)
 
 // 1. INPUTS & RISK
-rrTarget = input.float(3.0, title="Risk-to-Reward Ratio (1:X)")
-swingLen = input.int(5, title="LTF Swing Length (For CHoCH)")
-lineLen  = input.int(15, title="Projection Length (Bars)")
+rrTarget   = input.float(3.0, title="Risk-to-Reward Ratio (1:X)")
+swingLen   = input.int(5, title="LTF Swing Length (For CHoCH)")
+lineLen    = input.int(15, title="Projection Length (Bars)")
+minFvgSize = input.float(1.5, title="Minimum HTF FVG Size (Price Points)")
 useEmaFilter = input.bool(true, title="Use 200 EMA Trend Filter")
-killZone = input.session("0800-1130,1330-1600", title="Execution Killzones")
-
-// MULTI-TIMEFRAME INPUT
-htfRes = input.timeframe("15", title="Macro Zone Timeframe (HTF)")
+killZone   = input.session("0800-1130,1330-1600", title="Execution Killzones")
 
 // 2. FILTERS (THE FIREWALL)
 inKillzone = not na(time(timeframe.period, killZone))
@@ -18,7 +16,7 @@ bgcolor(inKillzone ? color.new(color.blue, 95) : na, title="Killzone Background"
 ema200 = ta.ema(close, 200)
 plot(useEmaFilter ? ema200 : na, "200 EMA", color=color.white, linewidth=2)
 
-// 3. LIVE & PREVIOUS SESSION LIQUIDITY (White Straight Lines)
+// 3. LIVE & PREVIOUS SESSION LIQUIDITY
 tokyoZone  = input.session("2000-0300", title="Tokyo Session")
 londonZone = input.session("0300-0800", title="London Session")
 nyZone     = input.session("0800-1700", title="New York Session")
@@ -27,21 +25,14 @@ inTokyo  = not na(time(timeframe.period, tokyoZone))
 inLondon = not na(time(timeframe.period, londonZone))
 inNY     = not na(time(timeframe.period, nyZone))
 
-var float activeH = na
-var float activeL = na
-var float prevH = na
-var float prevL = na
-var string sessionName = ""
-var string prevSessionName = ""
+var float activeH = na, var float activeL = na
+var float prevH = na, var float prevL = na
+var string sessionName = "", var string prevSessionName = ""
 
-var line activeHLine = na
-var line activeLLine = na
-var label activeHLabel = na
-var label activeLLabel = na
-var line prevHLine = na
-var line prevLLine = na
-var label prevHLabel = na
-var label prevLLabel = na
+var line activeHLine = na, var line activeLLine = na
+var label activeHLabel = na, var label activeLLabel = na
+var line prevHLine = na, var line prevLLine = na
+var label prevHLabel = na, var label prevLLabel = na
 
 isNewSession = (inTokyo and not inTokyo[1]) or (inLondon and not inLondon[1]) or (inNY and not inNY[1])
 
@@ -61,15 +52,11 @@ if isNewSession
     activeL := low
 
     if not na(prevHLine)
-        line.delete(prevHLine)
-        line.delete(prevLLine)
-        label.delete(prevHLabel)
-        label.delete(prevLLabel)
+        line.delete(prevHLine), line.delete(prevLLine)
+        label.delete(prevHLabel), label.delete(prevLLabel)
     if not na(activeHLine)
-        line.delete(activeHLine)
-        line.delete(activeLLine)
-        label.delete(activeHLabel)
-        label.delete(activeLLabel)
+        line.delete(activeHLine), line.delete(activeLLine)
+        label.delete(activeHLabel), label.delete(activeLLabel)
 
     if not na(prevH)
         prevHLine := line.new(bar_index, prevH, bar_index + 10, prevH, color=color.white, width=1, style=line.style_dotted)
@@ -85,63 +72,73 @@ if isNewSession
 else if inTokyo or inLondon or inNY
     activeH := math.max(activeH, high)
     activeL := math.min(activeL, low)
-    line.set_y1(activeHLine, activeH)
-    line.set_y2(activeHLine, activeH)
-    line.set_x2(activeHLine, bar_index + 10)
-    line.set_y1(activeLLine, activeL)
-    line.set_y2(activeLLine, activeL)
-    line.set_x2(activeLLine, bar_index + 10)
-    label.set_xy(activeHLabel, bar_index + 10, activeH)
-    label.set_xy(activeLLabel, bar_index + 10, activeL)
+    line.set_y1(activeHLine, activeH), line.set_y2(activeHLine, activeH), line.set_x2(activeHLine, bar_index + 10)
+    line.set_y1(activeLLine, activeL), line.set_y2(activeLLine, activeL), line.set_x2(activeLLine, bar_index + 10)
+    label.set_xy(activeHLabel, bar_index + 10, activeH), label.set_xy(activeLLabel, bar_index + 10, activeL)
 
     if not na(prevHLine)
-        line.set_x2(prevHLine, bar_index + 10)
-        line.set_x2(prevLLine, bar_index + 10)
-        label.set_x(prevHLabel, bar_index + 10)
-        label.set_x(prevLLabel, bar_index + 10)
+        line.set_x2(prevHLine, bar_index + 10), line.set_x2(prevLLine, bar_index + 10)
+        label.set_x(prevHLabel, bar_index + 10), label.set_x(prevLLabel, bar_index + 10)
 else
     if not na(activeHLine)
-        line.set_x2(activeHLine, bar_index + 10)
-        line.set_x2(activeLLine, bar_index + 10)
-        label.set_x(activeHLabel, bar_index + 10)
-        label.set_x(activeLLabel, bar_index + 10)
+        line.set_x2(activeHLine, bar_index + 10), line.set_x2(activeLLine, bar_index + 10)
+        label.set_x(activeHLabel, bar_index + 10), label.set_x(activeLLabel, bar_index + 10)
     if not na(prevHLine)
-        line.set_x2(prevHLine, bar_index + 10)
-        line.set_x2(prevLLine, bar_index + 10)
-        label.set_x(prevHLabel, bar_index + 10)
-        label.set_x(prevLLabel, bar_index + 10)
+        line.set_x2(prevHLine, bar_index + 10), line.set_x2(prevLLine, bar_index + 10)
+        label.set_x(prevHLabel, bar_index + 10), label.set_x(prevLLabel, bar_index + 10)
 
 
-// 4. HIGHER TIMEFRAME (HTF) FVG & OB CALCULATIONS
-f_htf_data() =>
-    b_fvg = low[0] > high[2] and close[1] > high[2]
-    s_fvg = high[0] < low[2] and close[1] < low[2]
-    [b_fvg, s_fvg, low[0], high[2], low[2], high[0]]
+// 4. SIZE-FILTERED HTF FVG MATRIX (15M, 1H, 4H)
+f_get_fvg() =>
+    bullGap = low[0] - high[2]
+    bearGap = low[2] - high[0]
+    
+    // Firewall: Gap must be larger than the minFvgSize input
+    bull = bullGap >= minFvgSize and close[1] > high[2]
+    bear = bearGap >= minFvgSize and close[1] < low[2]
+    
+    [bull, bear, low[0], high[2], low[2], high[0]]
 
-[htfBull, htfBear, bullTop, bullBot, bearTop, bearBot] = request.security(syminfo.tickerid, htfRes, f_htf_data(), barmerge.gaps_off, barmerge.lookahead_off)
+[b15, s15, bTop15, bBot15, sTop15, sBot15] = request.security(syminfo.tickerid, "15", f_get_fvg(), barmerge.gaps_off, barmerge.lookahead_off)
+[b60, s60, bTop60, bBot60, sTop60, sBot60] = request.security(syminfo.tickerid, "60", f_get_fvg(), barmerge.gaps_off, barmerge.lookahead_off)
+[b240, s240, bTop240, bBot240, sTop240, sBot240] = request.security(syminfo.tickerid, "240", f_get_fvg(), barmerge.gaps_off, barmerge.lookahead_off)
 
-var float activeHtfBullTop = na
-var float activeHtfBullBot = na
-var float activeHtfBearTop = na
-var float activeHtfBearBot = na
+var float actBull15Top = na, var float actBull15Bot = na
+var float actBear15Top = na, var float actBear15Bot = na
+var float actBull60Top = na, var float actBull60Bot = na
+var float actBear60Top = na, var float actBear60Bot = na
+var float actBull240Top = na, var float actBull240Bot = na
+var float actBear240Top = na, var float actBear240Bot = na
 
-// Only draw the box once when the HTF registers a new FVG
-if htfBull and not htfBull[1]
-    activeHtfBullTop := bullTop
-    activeHtfBullBot := bullBot
-    box.new(bar_index, activeHtfBullTop, bar_index + 50, activeHtfBullBot, border_color=color.new(color.green, 50), bgcolor=color.new(color.green, 90))
+// 15M Boxes
+if b15 and not b15[1]
+    actBull15Top := bTop15, actBull15Bot := bBot15
+    box.new(bar_index, actBull15Top, bar_index + 50, actBull15Bot, border_color=color.new(color.green, 50), bgcolor=color.new(color.green, 90), text="15M FVG", text_color=color.green, text_size=size.small, text_halign=text.align_center)
+if s15 and not s15[1]
+    actBear15Top := sTop15, actBear15Bot := sBot15
+    box.new(bar_index, actBear15Top, bar_index + 50, actBear15Bot, border_color=color.new(color.red, 50), bgcolor=color.new(color.red, 90), text="15M FVG", text_color=color.red, text_size=size.small, text_halign=text.align_center)
 
-if htfBear and not htfBear[1]
-    activeHtfBearTop := bearTop
-    activeHtfBearBot := bearBot
-    box.new(bar_index, activeHtfBearTop, bar_index + 50, activeHtfBearBot, border_color=color.new(color.red, 50), bgcolor=color.new(color.red, 90))
+// 1H (60M) Boxes
+if b60 and not b60[1]
+    actBull60Top := bTop60, actBull60Bot := bBot60
+    box.new(bar_index, actBull60Top, bar_index + 50, actBull60Bot, border_color=color.new(color.green, 30), bgcolor=color.new(color.green, 85), text="1H FVG", text_color=color.green, text_size=size.small, text_halign=text.align_center)
+if s60 and not s60[1]
+    actBear60Top := sTop60, actBear60Bot := sBot60
+    box.new(bar_index, actBear60Top, bar_index + 50, actBear60Bot, border_color=color.new(color.red, 30), bgcolor=color.new(color.red, 85), text="1H FVG", text_color=color.red, text_size=size.small, text_halign=text.align_center)
+
+// 4H (240M) Boxes
+if b240 and not b240[1]
+    actBull240Top := bTop240, actBull240Bot := bBot240
+    box.new(bar_index, actBull240Top, bar_index + 50, actBull240Bot, border_color=color.new(color.green, 10), bgcolor=color.new(color.green, 80), text="4H FVG", text_color=color.green, text_size=size.normal, text_halign=text.align_center)
+if s240 and not s240[1]
+    actBear240Top := sTop240, actBear240Bot := sBot240
+    box.new(bar_index, actBear240Top, bar_index + 50, actBear240Bot, border_color=color.new(color.red, 10), bgcolor=color.new(color.red, 80), text="4H FVG", text_color=color.red, text_size=size.normal, text_halign=text.align_center)
 
 // 5. LTF MARKET STRUCTURE (CHoCH) 
 sh = ta.pivothigh(high, swingLen, swingLen)
 sl = ta.pivotlow(low, swingLen, swingLen)
 
-var float lastSH = na
-var float lastSL = na
+var float lastSH = na, var float lastSL = na
 if not na(sh)
     lastSH := sh
 if not na(sl)
@@ -164,12 +161,18 @@ bearEngulf = close < low[1] and close < open
 trendBull = not useEmaFilter or (close > ema200)
 trendBear = not useEmaFilter or (close < ema200)
 
-// Trigger MUST happen inside the HTF FVG boundaries
-inHtfBullZone = (low <= activeHtfBullTop and high >= activeHtfBullBot)
-inHtfBearZone = (high >= activeHtfBearBot and low <= activeHtfBearTop)
+inBull15  = (low <= actBull15Top and high >= actBull15Bot)
+inBull60  = (low <= actBull60Top and high >= actBull60Bot)
+inBull240 = (low <= actBull240Top and high >= actBull240Bot)
+inAnyBullHTF = inBull15 or inBull60 or inBull240
 
-longTrigger  = inKillzone and trendBull and (bias == 1) and bullEngulf and inHtfBullZone
-shortTrigger = inKillzone and trendBear and (bias == -1) and bearEngulf and inHtfBearZone
+inBear15  = (high >= actBear15Bot and low <= actBear15Top)
+inBear60  = (high >= actBear60Bot and low <= actBear60Top)
+inBear240 = (high >= actBear240Bot and low <= actBear240Top)
+inAnyBearHTF = inBear15 or inBear60 or inBear240
+
+longTrigger  = inKillzone and trendBull and (bias == 1) and bullEngulf and inAnyBullHTF
+shortTrigger = inKillzone and trendBear and (bias == -1) and bearEngulf and inAnyBearHTF
 
 // 8. DRAWING THICK TRADE LINES & LABELS
 if longTrigger
