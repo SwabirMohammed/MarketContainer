@@ -1,9 +1,10 @@
 //@version=6
-indicator("Sniper Edge Engine v2 [CHoCH + Engulfing + FVG]", overlay=true, max_boxes_count=500, max_labels_count=500)
+indicator("Sniper Edge Engine v3 [Visual Trade Projections]", overlay=true, max_boxes_count=500, max_labels_count=500, max_lines_count=500)
 
 // 1. INPUTS & RISK
 rrTarget = input.float(3.0, title="Risk-to-Reward Ratio (1:X)")
 swingLen = input.int(5, title="Swing Length (For CHoCH)")
+lineLen  = input.int(15, title="Projection Length (Bars)")
 
 // 2. PREVIOUS SESSION LIQUIDITY (PDH / PDL)
 pdh = request.security(syminfo.tickerid, "D", high[1], barmerge.gaps_off, barmerge.lookahead_off)
@@ -12,7 +13,6 @@ plot(pdh, "PDH Liquidity", color=color.new(color.red, 50), style=plot.style_step
 plot(pdl, "PDL Liquidity", color=color.new(color.green, 50), style=plot.style_stepline, linewidth=2)
 
 // 3. MARKET STRUCTURE (CHoCH)
-// Identify swing points to determine shifts in market bias
 sh = ta.pivothigh(high, swingLen, swingLen)
 sl = ta.pivotlow(low, swingLen, swingLen)
 
@@ -23,23 +23,19 @@ if not na(sh)
 if not na(sl)
     lastSL := sl
 
-// Change of Character occurs when body closes past the last swing
 bullCHoCH = ta.crossover(close, lastSH)
 bearCHoCH = ta.crossunder(close, lastSL)
 
-// System Bias Memory
 var int bias = 0 
 if bullCHoCH
-    bias := 1 // Bullish Bias
+    bias := 1 
 if bearCHoCH
-    bias := -1 // Bearish Bias
+    bias := -1 
 
 // 4. FAIR VALUE GAPS (FVG)
-// Three-candle imbalance pattern
 bullFVG = low[0] > high[2] and close[1] > high[2]
 bearFVG = high[0] < low[2] and close[1] < low[2]
 
-// Track the most recent FVG boundaries to ensure price is interacting with it
 var float activeBullFVG = na
 var float activeBearFVG = na
 if bullFVG
@@ -48,23 +44,50 @@ if bearFVG
     activeBearFVG := high[0]
 
 // 5. THE FIREWALL: ENGULFING DISPLACEMENT
-// Bullish Engulf: Body closes above the previous candle's high
 bullEngulf = close > high[1] and close > open
-// Bearish Engulf: Body closes beneath the previous candle's low
 bearEngulf = close < low[1] and close < open
 
 // 6. EXECUTION TRIGGERS
-// Must have: Correct Bias + Engulfing Confirmation + FVG Presence
 longTrigger  = (bias == 1) and bullEngulf and (bullFVG or (low <= activeBullFVG))
 shortTrigger = (bias == -1) and bearEngulf and (bearFVG or (high >= activeBearFVG))
 
-// Print signals on the chart
 plotshape(longTrigger, title="Buy Execution", style=shape.labelup, location=location.belowbar, color=color.green, text="BUY", textcolor=color.white, size=size.small)
 plotshape(shortTrigger, title="Sell Execution", style=shape.labeldown, location=location.abovebar, color=color.red, text="SELL", textcolor=color.white, size=size.small)
 
-// 7. ALERTS
+// 7. DRAWING TRADE LINES (ENTRY, SL, TP)
 if longTrigger
-    alert("🎯 SNIPER VERDICT: BUY\nBIAS: Bullish\nSETUP: Bull CHoCH + FVG Tap + Engulfing Rejection.\nEXECUTION: Entry on Close | SL: Below Trigger Wick | TP: 1:" + str.tostring(rrTarget) + " RR\nRISK: Max 5%", alert.freq_once_per_bar_close)
+    entryPrice = close
+    slPrice = math.min(low, low[1]) // Stop safely below the engulfing pair
+    risk = entryPrice - slPrice
+    tpPrice = entryPrice + (risk * rrTarget)
+
+    // Draw Lines
+    line.new(bar_index, entryPrice, bar_index + lineLen, entryPrice, color=color.blue, width=1, style=line.style_dashed)
+    line.new(bar_index, slPrice, bar_index + lineLen, slPrice, color=color.red, width=2, style=line.style_solid)
+    line.new(bar_index, tpPrice, bar_index + lineLen, tpPrice, color=color.green, width=2, style=line.style_solid)
+
+    // Add Targets
+    label.new(bar_index + lineLen, tpPrice, text="TP (" + str.tostring(rrTarget) + "R)", color=color.green, textcolor=color.white, style=label.style_label_left, size=size.small)
+    label.new(bar_index + lineLen, slPrice, text="SL", color=color.red, textcolor=color.white, style=label.style_label_left, size=size.small)
 
 if shortTrigger
-    alert("🎯 SNIPER VERDICT: SELL\nBIAS: Bearish\nSETUP: Bear CHoCH + FVG Tap + Engulfing Rejection.\nEXECUTION: Entry on Close | SL: Above Trigger Wick | TP: 1:" + str.tostring(rrTarget) + " RR\nRISK: Max 5%", alert.freq_once_per_bar_close)
+    entryPrice = close
+    slPrice = math.max(high, high[1]) // Stop safely above the engulfing pair
+    risk = slPrice - entryPrice
+    tpPrice = entryPrice - (risk * rrTarget)
+
+    // Draw Lines
+    line.new(bar_index, entryPrice, bar_index + lineLen, entryPrice, color=color.blue, width=1, style=line.style_dashed)
+    line.new(bar_index, slPrice, bar_index + lineLen, slPrice, color=color.red, width=2, style=line.style_solid)
+    line.new(bar_index, tpPrice, bar_index + lineLen, tpPrice, color=color.green, width=2, style=line.style_solid)
+
+    // Add Targets
+    label.new(bar_index + lineLen, tpPrice, text="TP (" + str.tostring(rrTarget) + "R)", color=color.green, textcolor=color.white, style=label.style_label_left, size=size.small)
+    label.new(bar_index + lineLen, slPrice, text="SL", color=color.red, textcolor=color.white, style=label.style_label_left, size=size.small)
+
+// 8. ALERTS
+if longTrigger
+    alert("🎯 SNIPER VERDICT: BUY\nBIAS: Bullish\nSETUP: Bull CHoCH + FVG Tap + Engulfing.\nEXECUTION: Entry on Close | SL: " + str.tostring(math.min(low, low[1])) + " | TP: 1:" + str.tostring(rrTarget) + " RR\nRISK: Max 5%", alert.freq_once_per_bar_close)
+
+if shortTrigger
+    alert("🎯 SNIPER VERDICT: SELL\nBIAS: Bearish\nSETUP: Bear CHoCH + FVG Tap + Engulfing.\nEXECUTION: Entry on Close | SL: " + str.tostring(math.max(high, high[1])) + " | TP: 1:" + str.tostring(rrTarget) + " RR\nRISK: Max 5%", alert.freq_once_per_bar_close)
