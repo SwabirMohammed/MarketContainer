@@ -1,5 +1,5 @@
 //@version=6
-indicator("Market Container", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=500)
+indicator("Sniper Edge Engine v24 [Accuracy Fix]", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=500)
 
 // ============================================================
 // 1. GLOBAL SCOPE FUNCTION
@@ -11,27 +11,32 @@ localTimeStr(hourNum, minNum, tz) =>
 // ============================================================
 // 2. INPUTS & RISK
 // ============================================================
+// Asset-Agnostic Sensitivity (ATR based)
+atr_val = ta.atr(14)
+minFvgMult     = input.float(1.0, title="Min HTF FVG ATR Multiplier", tooltip="Filters small FVGs based on volatility. 1.0 = FVG must be at least 1x ATR.")
+fvgBlockMult   = input.float(2.0, title="Opposing FVG Block ATR Mult", tooltip="Blocks trade if opposing FVG is within this many ATRs.")
+slBufferMult   = input.float(0.2, title="SL Buffer ATR Multiplier", tooltip="Adds extra padding to SL based on current volatility.")
+
+minFvgSize   = atr_val * minFvgMult
+fvgBlockDist = atr_val * fvgBlockMult
+slBuffer     = atr_val * slBufferMult
+
 rrTarget       = input.float(3.0, title="Risk-to-Reward Ratio (1:X)")
 swingLen       = input.int(3,     title="LTF Swing Length (For CHoCH)")
 lineLen        = input.int(15,    title="Projection Length (Bars)")
 signalCooldown = input.int(15,    title="Signal Cooldown (Bars)")
-minFvgSize     = input.float(1.5, title="Minimum HTF FVG Size (Price Points)")
 useEmaFilter   = input.bool(false, title="Use 200 EMA Trend Filter")
 
 // Lookback windows
 chochLookback = input.int(10, title="CHoCH Lookback Window (Bars)")
 fvgLookback   = input.int(5,  title="FVG Tap Lookback Window (Bars)")
 
-// FIX #2 — Opposing FVG proximity block distance
-fvgBlockDist = input.float(3.0, title="Opposing FVG Block Distance (Price Points)", tooltip="Blocks a long entry if a bear FVG top is within this many points above entry, and vice versa for shorts. Prevents entries with a supply/demand wall directly overhead/underfoot.")
+// Block & Confluence
 useFvgBlock  = input.bool(false, title="Enable Opposing FVG Block", tooltip="Prevents taking trades directly into an opposing FVG wall.")
+confMode     = input.string("Aggressive", title="HTF Confluence Mode", options=["None", "Aggressive", "Moderate", "Conservative"], tooltip="Select how strictly to follow the Higher Timeframe trend.")
 
-// FIX #1 — HTF Confluence filter
-confMode = input.string("Aggressive", title="HTF Confluence Mode", options=["None", "Aggressive", "Moderate", "Conservative"], tooltip="None: No filter. \nAggressive: Fires if ANY HTF (15M, 1H, or 4H) agrees with trade. \nModerate: Requires 15M AND 1H to agree. \nConservative: Requires 1H AND 4H to agree.")
-
-// FIX #3 — Structure-based SL
-useStructureSL = input.bool(true, title="Use Structure-Based SL (Swing High/Low)", tooltip="Places SL at the last confirmed swing high/low instead of prior candle — gives the trade more breathing room.")
-slBuffer       = input.float(0.5, title="SL Buffer Beyond Structure (Price Points)", tooltip="Extra padding added beyond the swing high/low for the SL.")
+// SL Strategy
+useStructureSL = input.bool(true, title="Use Structure-Based SL (Swing High/Low)", tooltip="Places SL at the last confirmed swing high/low instead of prior candle.")
 
 // Theme
 useLightModeLabels = input.bool(false, title="Use Light Mode Text Colors (Dark Gray)")
