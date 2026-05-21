@@ -1,5 +1,5 @@
 //@version=6
-indicator("Market Container", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=500)
+indicator("Sniper Edge Engine v24 [Accuracy Fix]", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=500)
 
 // ============================================================
 // 1. GLOBAL SCOPE FUNCTION
@@ -358,9 +358,28 @@ if shortTrigger
     label.new(bar_index + lineLen, slPrice,    text="SL",                                   color=color.new(color.red,   100), textcolor=color.red,   style=label.style_label_left, size=size.small)
 
 // ============================================================
-// 12. COMMAND CENTER HUD
+// 12. MARKET INTELLIGENCE & COMMAND CENTER HUD
 // ============================================================
-var table hud = table.new(position.bottom_right, 2, 9, bgcolor=color.new(#0c0d12, 10), border_width=1, border_color=color.new(color.gray, 70))
+// Consolidation & Volume Detection
+[_, _, adx_val] = ta.dmi(14, 14)
+is_consolidating = adx_val < 20
+relative_vol = volume / ta.sma(volume, 50)
+is_low_vol = relative_vol < 0.5
+
+string market_status = "LOOK FOR ENTRY"
+color status_color = color.green
+
+if is_consolidating
+    market_status := "STAY OFF - CONSOLIDATING"
+    status_color := color.orange
+else if is_low_vol
+    market_status := "STAY OFF - LOW VOL"
+    status_color := color.red
+else if not inKillzone
+    market_status := "STAY OFF - OUTSIDE KILLZONE"
+    status_color := color.gray
+
+var table hud = table.new(position.bottom_right, 2, 10, bgcolor=color.new(#0c0d12, 10), border_width=1, border_color=color.new(color.gray, 70))
 
 f_cell(tbl, col, row, labelText, isHeading, trendStr) =>
     cellBg   = isHeading ? color.new(#1b1e29, 0) : color.new(#0e1017, 30)
@@ -380,23 +399,27 @@ if barstate.islast
     else if inNYTrk
         activeClockStr := "NEW YORK (" + localTimeStr(8,  0, hudTimezone) + "-" + localTimeStr(17, 0, hudTimezone) + ")"
 
-    table.cell(hud, 0, 0, "LIVE:", bgcolor=color.new(color.blue, 20), text_color=color.white, text_size=size.small, text_font_family=font.family_monospace)
-    table.cell(hud, 1, 0, activeClockStr, bgcolor=color.new(color.blue, 20), text_color=color.white, text_size=size.small, text_font_family=font.family_monospace)
+    table.cell(hud, 0, 0, "STATUS:", bgcolor=color.new(status_color, 20), text_color=color.white, text_size=size.small, text_font_family=font.family_monospace)
+    table.cell(hud, 1, 0, market_status, bgcolor=color.new(status_color, 20), text_color=color.white, text_size=size.small, text_font_family=font.family_monospace)
 
-    f_cell(hud, 0, 1, "TIMEFRAME", true, "")
-    f_cell(hud, 1, 1, "BIAS MATRIX", true, "")
+    table.cell(hud, 0, 1, "LIVE:", bgcolor=color.new(color.blue, 20), text_color=color.white, text_size=size.small, text_font_family=font.family_monospace)
+    table.cell(hud, 1, 1, activeClockStr, bgcolor=color.new(color.blue, 20), text_color=color.white, text_size=size.small, text_font_family=font.family_monospace)
 
-    f_cell(hud, 0, 2, "1M",  false, "")
-    f_cell(hud, 1, 2, "[" + trend1M  + "]", false, trend1M)
-    f_cell(hud, 0, 3, "3M",  false, "")
-    f_cell(hud, 1, 3, "[" + trend3M  + "]", false, trend3M)
-    f_cell(hud, 0, 4, "5M",  false, "")
-    f_cell(hud, 1, 4, "[" + trend5M  + "]", false, trend5M)
-    f_cell(hud, 0, 5, "15M", false, "")
-    f_cell(hud, 1, 5, "[" + trend15M + "]", false, trend15M)
-    f_cell(hud, 0, 6, "1H",  false, "")
-    f_cell(hud, 1, 6, "[" + trend1H  + "]", false, trend1H)
-    f_cell(hud, 0, 7, "4H",  false, "")
-    f_cell(hud, 1, 7, "[" + trend4H  + "]", false, trend4H)
-    f_cell(hud, 1, 8, "[" + trend1D  + "]", false, trend1D)
+    f_cell(hud, 0, 2, "TIMEFRAME", true, "")
+    f_cell(hud, 1, 2, "BIAS MATRIX", true, "")
+
+    f_cell(hud, 0, 3, "1M",  false, "")
+    f_cell(hud, 1, 3, "[" + trend1M  + "]", false, trend1M)
+    f_cell(hud, 0, 4, "3M",  false, "")
+    f_cell(hud, 1, 4, "[" + trend3M  + "]", false, trend3M)
+    f_cell(hud, 0, 5, "5M",  false, "")
+    f_cell(hud, 1, 5, "[" + trend5M  + "]", false, trend5M)
+    f_cell(hud, 0, 6, "15M", false, "")
+    f_cell(hud, 1, 6, "[" + trend15M + "]", false, trend15M)
+    f_cell(hud, 0, 7, "1H",  false, "")
+    f_cell(hud, 1, 7, "[" + trend1H  + "]", false, trend1H)
+    f_cell(hud, 0, 8, "4H",  false, "")
+    f_cell(hud, 1, 8, "[" + trend4H  + "]", false, trend4H)
+    f_cell(hud, 0, 9, "1D",  false, "")
+    f_cell(hud, 1, 9, "[" + trend1D  + "]", false, trend1D)
 
