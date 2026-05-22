@@ -5,7 +5,7 @@ indicator("Sniper Edge Engine v24 [Accuracy Fix]", overlay=true, max_lines_count
 // 1. GLOBAL SCOPE FUNCTION
 // ============================================================
 localTimeStr(hourNum, minNum, tz) =>
-    timeInUnit = timestamp(year, month, dayofmonth, hourNum, minNum)
+    timeInUnit = timestamp("America/New_York", year, month, dayofmonth, hourNum, minNum)
     str.format_time(timeInUnit, "HH:mm", tz)
 
 // ============================================================
@@ -51,8 +51,8 @@ nyZone     = input.session("1300-1600", title="New York Killzone")
 // ============================================================
 // 3. FILTERS & THEME-ADAPTIVE LABELING
 // ============================================================
-inLondon   = not na(time(timeframe.period, londonZone))
-inNY       = not na(time(timeframe.period, nyZone))
+inLondon   = not na(time(timeframe.period, londonZone, "UTC"))
+inNY       = not na(time(timeframe.period, nyZone, "UTC"))
 inKillzone = inLondon or inNY
 
 textColorStyle = useLightModeLabels ? color.new(#1a1a1a, 20) : color.new(color.white, 0)
@@ -75,9 +75,9 @@ tokyoHours  = "2000-0300"
 londonHours = "0300-0800"
 nyHours     = "0800-1700"
 
-inTokyoTrk  = not na(time(timeframe.period, tokyoHours))
-inLondonTrk = not na(time(timeframe.period, londonHours))
-inNYTrk     = not na(time(timeframe.period, nyHours))
+inTokyoTrk  = not na(time(timeframe.period, tokyoHours, "America/New_York"))
+inLondonTrk = not na(time(timeframe.period, londonHours, "America/New_York"))
+inNYTrk     = not na(time(timeframe.period, nyHours, "America/New_York"))
 
 var float activeH = na, var float activeL = na
 var float prevH   = na, var float prevL   = na
