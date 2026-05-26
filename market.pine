@@ -240,9 +240,18 @@ else if not na(fibPeak) and close < fibPeak
 
 // Calculate OTE Levels
 fib0618 = not na(fibStart) and not na(fibPeak) ? (fibPeak > fibStart ? fibPeak - (fibPeak - fibStart) * 0.618 : fibPeak + (fibStart - fibPeak) * 0.618) : na
+fib0650 = not na(fibStart) and not na(fibPeak) ? (fibPeak > fibStart ? fibPeak - (fibPeak - fibStart) * 0.650 : fibPeak + (fibStart - fibPeak) * 0.650) : na
+fib0710 = not na(fibStart) and not na(fibPeak) ? (fibPeak > fibStart ? fibPeak - (fibPeak - fibStart) * 0.710 : fibPeak + (fibStart - fibPeak) * 0.710) : na
 fib0786 = not na(fibStart) and not na(fibPeak) ? (fibPeak > fibStart ? fibPeak - (fibPeak - fibStart) * 0.786 : fibPeak + (fibStart - fibPeak) * 0.786) : na
 
 inFibZone = not useFibFilter or (fibPeak > fibStart ? (low <= fib0618 and low >= fib0786) : (high >= fib0618 and high <= fib0786))
+
+// Plot OTE Levels (65% Opacity = 35% Transparency)
+p_618 = plot(useFibFilter ? fib0618 : na, "Fib 61.8%", color=color.new(color.gray, 35), style=plot.style_linebr)
+plot(useFibFilter ? fib0650 : na, "Fib 65.0%", color=color.new(color.gray, 50), style=plot.style_linebr)
+plot(useFibFilter ? fib0710 : na, "Fib 71.0%", color=color.new(color.gray, 50), style=plot.style_linebr)
+p_786 = plot(useFibFilter ? fib0786 : na, "Fib 78.6%", color=color.new(color.gray, 35), style=plot.style_linebr)
+fill(p_618, p_786, color=color.new(color.gray, 92), title="OTE Zone Fill")
 
 var int lastBullCHoCHBar = 0
 var int lastBearCHoCHBar = 0
