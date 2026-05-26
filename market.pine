@@ -2,6 +2,13 @@
 indicator("Sniper Edge Engine v24 [Accuracy Fix]", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=500)
 
 // ============================================================
+// USAGE NOTES & OPTIMIZATION:
+// 1. HIGH VOLATILITY (London/NY): Increase 'LTF Swing Length' to 5-7 to filter noise.
+// 2. FAKEOUT PREVENTION: Toggle 'Enable Opposing FVG Block' to 'On'.
+// 3. TREND CONFIRMATION: Set 'HTF Confluence Mode' to 'Moderate' or 'Conservative'.
+// ============================================================
+
+// ============================================================
 // 1. GLOBAL SCOPE FUNCTION
 // ============================================================
 localTimeStr(hourNum, minNum, tz) =>
@@ -22,7 +29,7 @@ fvgBlockDist = atr_val * fvgBlockMult
 slBuffer     = atr_val * slBufferMult
 
 rrTarget       = input.float(3.0, title="Risk-to-Reward Ratio (1:X)")
-swingLen       = input.int(3,     title="LTF Swing Length (For CHoCH)")
+swingLen       = input.int(3,     title="LTF Swing Length (For CHoCH)", tooltip="Set to 5-7 during London/NY sessions to avoid fakeouts.")
 lineLen        = input.int(15,    title="Projection Length (Bars)")
 signalCooldown = input.int(15,    title="Signal Cooldown (Bars)")
 useEmaFilter   = input.bool(false, title="Use 200 EMA Trend Filter")
@@ -32,8 +39,15 @@ chochLookback = input.int(10, title="CHoCH Lookback Window (Bars)")
 fvgLookback   = input.int(5,  title="FVG Tap Lookback Window (Bars)")
 
 // Block & Confluence
-useFvgBlock  = input.bool(false, title="Enable Opposing FVG Block", tooltip="Prevents taking trades directly into an opposing FVG wall.")
+useFvgBlock  = input.bool(false, title="Enable Opposing FVG Block", tooltip="Prevents taking trades directly into an opposing FVG wall. Recommended: ON for higher accuracy.")
 confMode     = input.string("Aggressive", title="HTF Confluence Mode", options=["None", "Aggressive", "Moderate", "Conservative"], tooltip="Select how strictly to follow the Higher Timeframe trend.")
+
+// Fibonacci OTE Settings
+useFibFilter = input.bool(true,  title="Use Fibonacci OTE Filter", tooltip="Only allows trades if price retraces into the custom Fib zone after a CHoCH.")
+fibLevel1    = 0.618 // 61.8%
+fibLevel2    = 0.650 // 65.0%
+fibLevel3    = 0.710 // 71.0%
+fibLevel4    = 0.786 // 78.6%
 
 // SL Strategy
 useStructureSL = input.bool(true, title="Use Structure-Based SL (Swing High/Low)", tooltip="Places SL at the last confirmed swing high/low instead of prior candle.")
@@ -201,6 +215,8 @@ sh = ta.pivothigh(high, swingLen, swingLen)
 sl = ta.pivotlow(low,  swingLen, swingLen)
 
 var float lastSH = na, var float lastSL = na
+var float fibStart = na, var float fibPeak = na
+
 if not na(sh)
     lastSH := sh
 if not na(sl)
@@ -208,6 +224,25 @@ if not na(sl)
 
 bullCHoCH = ta.crossover(close,  lastSH)
 bearCHoCH = ta.crossunder(close, lastSL)
+
+// Track the Leg for Fib
+if bullCHoCH
+    fibStart := lastSL
+    fibPeak  := high
+else if not na(fibPeak) and close > fibPeak
+    fibPeak := high
+
+if bearCHoCH
+    fibStart := lastSH
+    fibPeak  := low
+else if not na(fibPeak) and close < fibPeak
+    fibPeak := low
+
+// Calculate OTE Levels
+fib0618 = not na(fibStart) and not na(fibPeak) ? (fibPeak > fibStart ? fibPeak - (fibPeak - fibStart) * 0.618 : fibPeak + (fibStart - fibPeak) * 0.618) : na
+fib0786 = not na(fibStart) and not na(fibPeak) ? (fibPeak > fibStart ? fibPeak - (fibPeak - fibStart) * 0.786 : fibPeak + (fibStart - fibPeak) * 0.786) : na
+
+inFibZone = not useFibFilter or (fibPeak > fibStart ? (low <= fib0618 and low >= fib0786) : (high >= fib0618 and high <= fib0786))
 
 var int lastBullCHoCHBar = 0
 var int lastBearCHoCHBar = 0
@@ -324,8 +359,8 @@ trendBear = not useEmaFilter or (close < ema200)
 var int lastTradeBar = 0
 cooldownPassed = (bar_index - lastTradeBar) >= signalCooldown
 
-longTrigger  = inKillzone and trendBull and htfBullOk and recentBullCHoCH and bullEngulf and recentBullFvgTap and bearFvgNotTooClose and cooldownPassed
-shortTrigger = inKillzone and trendBear and htfBearOk and recentBearCHoCH and bearEngulf and recentBearFvgTap and bullFvgNotTooClose and cooldownPassed
+longTrigger  = inKillzone and trendBull and htfBullOk and recentBullCHoCH and bullEngulf and recentBullFvgTap and bearFvgNotTooClose and cooldownPassed and inFibZone
+shortTrigger = inKillzone and trendBear and htfBearOk and recentBearCHoCH and bearEngulf and recentBearFvgTap and bullFvgNotTooClose and cooldownPassed and inFibZone
 
 if longTrigger
     lastTradeBar := bar_index
