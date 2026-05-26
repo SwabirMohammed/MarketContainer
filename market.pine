@@ -42,13 +42,6 @@ fvgLookback   = input.int(5,  title="FVG Tap Lookback Window (Bars)")
 useFvgBlock  = input.bool(false, title="Enable Opposing FVG Block", tooltip="Prevents taking trades directly into an opposing FVG wall. Recommended: ON for higher accuracy.")
 confMode     = input.string("Aggressive", title="HTF Confluence Mode", options=["None", "Aggressive", "Moderate", "Conservative"], tooltip="Select how strictly to follow the Higher Timeframe trend.")
 
-// Fibonacci OTE Settings
-useFibFilter = input.bool(true,  title="Use Fibonacci OTE Filter", tooltip="Only allows trades if price retraces into the custom Fib zone after a CHoCH.")
-fibLevel1    = 0.618 // 61.8%
-fibLevel2    = 0.650 // 65.0%
-fibLevel3    = 0.710 // 71.0%
-fibLevel4    = 0.786 // 78.6%
-
 // SL Strategy
 useStructureSL = input.bool(true, title="Use Structure-Based SL (Swing High/Low)", tooltip="Places SL at the last confirmed swing high/low instead of prior candle.")
 
@@ -215,12 +208,6 @@ sh = ta.pivothigh(high, swingLen, swingLen)
 sl = ta.pivotlow(low,  swingLen, swingLen)
 
 var float lastSH = na, var float lastSL = na
-var float fibStart = na, var float fibPeak = na
-
-// Fib Line Objects
-var line l618 = na, var line l650 = na, var line l710 = na, var line l786 = na
-var label lbl618 = na, var label lbl786 = na
-
 if not na(sh)
     lastSH := sh
 if not na(sl)
@@ -228,49 +215,6 @@ if not na(sl)
 
 bullCHoCH = ta.crossover(close,  lastSH)
 bearCHoCH = ta.crossunder(close, lastSL)
-
-// Track the Leg for Fib
-if bullCHoCH
-    fibStart := lastSL
-    fibPeak  := high
-else if not na(fibPeak) and close > fibPeak
-    fibPeak := high
-
-if bearCHoCH
-    fibStart := lastSH
-    fibPeak  := low
-else if not na(fibPeak) and close < fibPeak
-    fibPeak := low
-
-// Calculate OTE Levels
-fib0618 = not na(fibStart) and not na(fibPeak) ? (fibPeak > fibStart ? fibPeak - (fibPeak - fibStart) * 0.618 : fibPeak + (fibStart - fibPeak) * 0.618) : na
-fib0650 = not na(fibStart) and not na(fibPeak) ? (fibPeak > fibStart ? fibPeak - (fibPeak - fibStart) * 0.650 : fibPeak + (fibStart - fibPeak) * 0.650) : na
-fib0710 = not na(fibStart) and not na(fibPeak) ? (fibPeak > fibStart ? fibPeak - (fibPeak - fibStart) * 0.710 : fibPeak + (fibStart - fibPeak) * 0.710) : na
-fib0786 = not na(fibStart) and not na(fibPeak) ? (fibPeak > fibStart ? fibPeak - (fibPeak - fibStart) * 0.786 : fibPeak + (fibStart - fibPeak) * 0.786) : na
-
-inFibZone = not useFibFilter or (fibPeak > fibStart ? (low <= fib0618 and low >= fib0786) : (high >= fib0618 and high <= fib0786))
-
-// Visualize as Horizontal Lines (65% Opacity = 35% Transp)
-if useFibFilter and not na(fib0618)
-    if na(l618)
-        l618 := line.new(bar_index, fib0618, bar_index + 10, fib0618, color=color.new(color.gray, 35), style=line.style_dashed)
-        l650 := line.new(bar_index, fib0650, bar_index + 10, fib0650, color=color.new(color.gray, 50), style=line.style_dotted)
-        l710 := line.new(bar_index, fib0710, bar_index + 10, fib0710, color=color.new(color.gray, 50), style=line.style_dotted)
-        l786 := line.new(bar_index, fib0786, bar_index + 10, fib0786, color=color.new(color.gray, 35), style=line.style_dashed)
-        lbl618 := label.new(bar_index + 10, fib0618, "61.8%", color=color.new(color.white, 100), textcolor=color.new(color.gray, 35), style=label.style_label_left, size=size.small)
-        lbl786 := label.new(bar_index + 10, fib0786, "78.6%", color=color.new(color.white, 100), textcolor=color.new(color.gray, 35), style=label.style_label_left, size=size.small)
-    else
-        line.set_xy1(l618, bar_index - 5, fib0618), line.set_xy2(l618, bar_index + 10, fib0618)
-        line.set_xy1(l650, bar_index - 5, fib0650), line.set_xy2(l650, bar_index + 10, fib0650)
-        line.set_xy1(l710, bar_index - 5, fib0710), line.set_xy2(l710, bar_index + 10, fib0710)
-        line.set_xy1(l786, bar_index - 5, fib0786), line.set_xy2(l786, bar_index + 10, fib0786)
-        label.set_xy(lbl618, bar_index + 10, fib0618)
-        label.set_xy(lbl786, bar_index + 10, fib0786)
-else
-    line.delete(l618), line.delete(l650), line.delete(l710), line.delete(l786)
-    label.delete(lbl618), label.delete(lbl786)
-    l618 := na, l650 := na, l710 := na, l786 := na
-    lbl618 := na, lbl786 := na
 
 var int lastBullCHoCHBar = 0
 var int lastBearCHoCHBar = 0
@@ -387,8 +331,8 @@ trendBear = not useEmaFilter or (close < ema200)
 var int lastTradeBar = 0
 cooldownPassed = (bar_index - lastTradeBar) >= signalCooldown
 
-longTrigger  = inKillzone and trendBull and htfBullOk and recentBullCHoCH and bullEngulf and recentBullFvgTap and bearFvgNotTooClose and cooldownPassed and inFibZone
-shortTrigger = inKillzone and trendBear and htfBearOk and recentBearCHoCH and bearEngulf and recentBearFvgTap and bullFvgNotTooClose and cooldownPassed and inFibZone
+longTrigger  = inKillzone and trendBull and htfBullOk and recentBullCHoCH and bullEngulf and recentBullFvgTap and bearFvgNotTooClose and cooldownPassed
+shortTrigger = inKillzone and trendBear and htfBearOk and recentBearCHoCH and bearEngulf and recentBearFvgTap and bullFvgNotTooClose and cooldownPassed
 
 if longTrigger
     lastTradeBar := bar_index
