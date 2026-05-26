@@ -23,6 +23,7 @@ atr_val = ta.atr(14)
 minFvgMult     = input.float(1.0, title="Min HTF FVG ATR Multiplier", tooltip="Filters small FVGs based on volatility. 1.0 = FVG must be at least 1x ATR.")
 fvgBlockMult   = input.float(2.0, title="Opposing FVG Block ATR Mult", tooltip="Blocks trade if opposing FVG is within this many ATRs.")
 slBufferMult   = input.float(0.2, title="SL Buffer ATR Multiplier", tooltip="Adds extra padding to SL based on current volatility.")
+maxRiskAllowed = input.float(7.0, title="Max Risk (Points/Dollars)", tooltip="Limits the maximum SL distance. If structure SL is further than this, it caps it at this value.")
 
 minFvgSize   = atr_val * minFvgMult
 fvgBlockDist = atr_val * fvgBlockMult
@@ -337,8 +338,10 @@ shortTrigger = inKillzone and trendBear and htfBearOk and recentBearCHoCH and be
 if longTrigger
     lastTradeBar := bar_index
     entryPrice   = close
-    // FIX #3 — Safety check: if lastSL is na, fall back to candle-based SL to avoid no-trade error
-    slPrice      = (useStructureSL and not na(lastSL)) ? lastSL - slBuffer : math.min(low, low[1])
+    // Calculate raw SL based on structure or candles
+    rawSlPrice   = (useStructureSL and not na(lastSL)) ? lastSL - slBuffer : math.min(low, low[1])
+    // Apply Max Risk Cap
+    slPrice      = math.max(rawSlPrice, entryPrice - maxRiskAllowed)
     risk         = entryPrice - slPrice
     tpPrice      = entryPrice + (risk * rrTarget)
 
@@ -352,8 +355,10 @@ if longTrigger
 if shortTrigger
     lastTradeBar := bar_index
     entryPrice   = close
-    // FIX #3 — Safety check: if lastSH is na, fall back to candle-based SL
-    slPrice      = (useStructureSL and not na(lastSH)) ? lastSH + slBuffer : math.max(high, high[1])
+    // Calculate raw SL based on structure or candles
+    rawSlPrice   = (useStructureSL and not na(lastSH)) ? lastSH + slBuffer : math.max(high, high[1])
+    // Apply Max Risk Cap
+    slPrice      = math.min(rawSlPrice, entryPrice + maxRiskAllowed)
     risk         = slPrice - entryPrice
     tpPrice      = entryPrice - (risk * rrTarget)
 
