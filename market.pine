@@ -217,6 +217,10 @@ sl = ta.pivotlow(low,  swingLen, swingLen)
 var float lastSH = na, var float lastSL = na
 var float fibStart = na, var float fibPeak = na
 
+// Fib Line Objects
+var line l618 = na, var line l650 = na, var line l710 = na, var line l786 = na
+var label lbl618 = na, var label lbl786 = na
+
 if not na(sh)
     lastSH := sh
 if not na(sl)
@@ -246,12 +250,27 @@ fib0786 = not na(fibStart) and not na(fibPeak) ? (fibPeak > fibStart ? fibPeak -
 
 inFibZone = not useFibFilter or (fibPeak > fibStart ? (low <= fib0618 and low >= fib0786) : (high >= fib0618 and high <= fib0786))
 
-// Plot OTE Levels (65% Opacity = 35% Transparency)
-p_618 = plot(useFibFilter ? fib0618 : na, "Fib 61.8%", color=color.new(color.gray, 35), style=plot.style_linebr)
-plot(useFibFilter ? fib0650 : na, "Fib 65.0%", color=color.new(color.gray, 50), style=plot.style_linebr)
-plot(useFibFilter ? fib0710 : na, "Fib 71.0%", color=color.new(color.gray, 50), style=plot.style_linebr)
-p_786 = plot(useFibFilter ? fib0786 : na, "Fib 78.6%", color=color.new(color.gray, 35), style=plot.style_linebr)
-fill(p_618, p_786, color=color.new(color.gray, 92), title="OTE Zone Fill")
+// Visualize as Horizontal Lines (65% Opacity = 35% Transp)
+if useFibFilter and not na(fib0618)
+    if na(l618)
+        l618 := line.new(bar_index, fib0618, bar_index + 10, fib0618, color=color.new(color.gray, 35), style=line.style_dashed)
+        l650 := line.new(bar_index, fib0650, bar_index + 10, fib0650, color=color.new(color.gray, 50), style=line.style_dotted)
+        l710 := line.new(bar_index, fib0710, bar_index + 10, fib0710, color=color.new(color.gray, 50), style=line.style_dotted)
+        l786 := line.new(bar_index, fib0786, bar_index + 10, fib0786, color=color.new(color.gray, 35), style=line.style_dashed)
+        lbl618 := label.new(bar_index + 10, fib0618, "61.8%", color=color.new(color.white, 100), textcolor=color.new(color.gray, 35), style=label.style_label_left, size=size.small)
+        lbl786 := label.new(bar_index + 10, fib0786, "78.6%", color=color.new(color.white, 100), textcolor=color.new(color.gray, 35), style=label.style_label_left, size=size.small)
+    else
+        line.set_xy1(l618, bar_index - 5, fib0618), line.set_xy2(l618, bar_index + 10, fib0618)
+        line.set_xy1(l650, bar_index - 5, fib0650), line.set_xy2(l650, bar_index + 10, fib0650)
+        line.set_xy1(l710, bar_index - 5, fib0710), line.set_xy2(l710, bar_index + 10, fib0710)
+        line.set_xy1(l786, bar_index - 5, fib0786), line.set_xy2(l786, bar_index + 10, fib0786)
+        label.set_xy(lbl618, bar_index + 10, fib0618)
+        label.set_xy(lbl786, bar_index + 10, fib0786)
+else
+    line.delete(l618), line.delete(l650), line.delete(l710), line.delete(l786)
+    label.delete(lbl618), label.delete(lbl786)
+    l618 := na, l650 := na, l710 := na, l786 := na
+    lbl618 := na, lbl786 := na
 
 var int lastBullCHoCHBar = 0
 var int lastBearCHoCHBar = 0
