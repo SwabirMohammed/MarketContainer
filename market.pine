@@ -53,7 +53,7 @@ useLightModeLabels = input.bool(false, title="Use Light Mode Text Colors (Dark G
 hudTimezone = input.string("Europe/Istanbul", title="HUD Clock Display Timezone", options=["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "America/Sao_Paulo", "Europe/London", "Europe/Paris", "Europe/Berlin", "Europe/Istanbul", "Africa/Cairo", "Asia/Dubai", "Asia/Karachi", "Asia/Kolkata", "Asia/Bangkok", "Asia/Singapore", "Asia/Tokyo", "Asia/Shanghai", "Australia/Sydney", "Pacific/Auckland"])
 
 // Killzone Sessions
-londonZone = input.session("0700-1130", title="London Killzone")
+londonZone = input.session("0700-1200", title="London Killzone")
 nyZone     = input.session("1300-1600", title="New York Killzone")
 
 // ============================================================
