@@ -378,10 +378,16 @@ is_consolidating = adx_val < 20
 relative_vol = volume / ta.sma(volume, 50)
 is_low_vol = relative_vol < 0.5
 
+// Weekend Detection (For non-crypto assets)
+is_weekend = syminfo.type != "crypto" and (dayofweek(timenow, "UTC") == 7 or dayofweek(timenow, "UTC") == 1)
+
 string market_status = "LOOK FOR ENTRY"
 color status_color = color.green
 
-if is_consolidating
+if is_weekend
+    market_status := "STAY OFF - MARKET CLOSED"
+    status_color := color.gray
+else if is_consolidating
     market_status := "STAY OFF - CONSOLIDATING"
     status_color := color.orange
 else if is_low_vol
@@ -404,7 +410,9 @@ f_cell(tbl, col, row, labelText, isHeading, trendStr) =>
 
 if barstate.islast
     activeClockStr = "OFF-MARKET"
-    if inTokyoTrk
+    if is_weekend
+        activeClockStr := "MARKET CLOSED"
+    else if inTokyoTrk
         activeClockStr := "TOKYO ("    + localTimeStr(20, 0, hudTimezone) + "-" + localTimeStr(3,  0, hudTimezone) + ")"
     else if inLondonTrk
         activeClockStr := "LONDON ("   + localTimeStr(3,  0, hudTimezone) + "-" + localTimeStr(8,  0, hudTimezone) + ")"
